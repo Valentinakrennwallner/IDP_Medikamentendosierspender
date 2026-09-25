@@ -1,32 +1,240 @@
 \section{Software architecture and design}
 \label{chapter2}
 
-\subsection{Software modules}
+Building on the system overview in Chapter~\ref{chapter1}, this chapter
+describes how the software is divided into modules as well as the libraries,
+interrupts and pin assignment used. Figure~\ref{fig:architecture} shows the
+components and communication paths of the system.
 
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\textwidth]{images/system_architecture.png}
+	\caption{System architecture}
+	\label{fig:architecture}
+\end{figure}
+
+The intake times and target weights are managed on the Raspberry Pi and are
+transmitted to the ESP32 via Bluetooth together with the current time. The
+evaluation of the intake takes place locally on the ESP32, so that the LED
+display also works when the connection is interrupted. The software is
+implemented in C according to MISRA C and is divided into several threads.
+
+\subsection{Software modules}
 
 \subsubsection{Safety related modules}
 	\begin{enumerate}
-		\item Modul x: \\
-			Description:\\
-			Functions:\\
-			Data:\\
-			Requirements see: \ref{req.1.1}, .... \\
+		\item Weight measurement (ESP32): \\
+			Description: Reads the load cell via the HX711, converts the raw
+			values into grams, smooths them and checks them for plausibility. \\
+			Functions: weight\_read(), weight\_tare() \\
+			Data: Raw value, calibration factor, tare offset, weight in grams \\
+			Requirements see: \ref{req.s.1}
+
+		\item Dose evaluation and intake monitoring (ESP32): \\
+			Description: Compares the weight difference during intake with the
+			target weight and determines the status. If nothing is taken within
+			a time window after the intake time, the dose is considered
+			missed. \\
+			Functions: dose\_evaluate(), schedule\_check() \\
+			Data: Target weight, tolerance, intake times, status \\
+			Requirements see: \ref{req.s.2}
+
+		\item LED status display (ESP32): \\
+			Description: Displays the status via the RGB LED and tests all
+			three colour channels at program start. \\
+			Functions: led\_set\_status(), led\_self\_test() \\
+			Data: Current status \\
+			Requirements see: \ref{req.s.3}
+
+		\item Intake schedule and time control (Raspberry Pi): \\
+			Description: Manages the intake times and target weights,
+			transmits them to the ESP32 and triggers the push notification at
+			the intake time. The time is synchronised via NTP. \\
+			Functions: schedule\_load(), schedule\_check\_due() \\
+			Data: Intake schedule, system time \\
+			Requirements see: \ref{req.s.4}
 	\end{enumerate}
 
-
 \subsubsection{Security related modules}
+	\begin{enumerate}
+		\item Bluetooth communication and encryption (ESP32 and
+		Raspberry Pi): \\
+			Description: Establishes the connection, performs an ECDHE key
+			exchange and encrypts all messages with AES-GCM. A sequence number
+			protects against replay attacks. \\
+			Functions: bt\_send(), bt\_receive() \\
+			Data: Session key, sequence counter, message buffer \\
+			Requirements see: \ref{req.sec.1}
 
-\subsubsection{Modules with no influence on Safety and Security}
+		\item Telegram connection (Raspberry Pi): \\
+			Description: Sends reminders and warnings via the Telegram Bot API
+			over HTTPS. \\
+			Functions: telegram\_send() \\
+			Data: Bot token, chat ID, message text \\
+			Requirements see: \ref{req.sec.2}
+
+		\item Web interface (Raspberry Pi): \\
+			Description: Allows the intake schedule to be configured and the
+			history to be queried. \\
+			Functions: web\_handle\_request() \\
+			Data: Intake schedule, intake history \\
+			Requirements see: \ref{req.sec.3}
+	\end{enumerate}
+
+\subsubsection{Modules with no influence on safety and security}
+	\begin{enumerate}
+		\item System start and logging (ESP32 and Raspberry Pi): \\
+			Description: Initialises the hardware and modules, starts the
+			threads and outputs status messages without health data. \\
+			Functions: app\_main() or main()
+	\end{enumerate}
 
 \subsection{Libraries}
 
-Description of used function with parameters.
+ESP-IDF with FreeRTOS (ESP32)
+	\begin{itemize}
+		\item xTaskCreate(pvTaskCode, pcName, usStackDepth, pvParameters,
+		uxPriority, pxCreatedTask) creates a thread.
+		\item gpio\_set\_level(gpio\_num, level) and gpio\_get\_level(gpio\_num)
+		control the HX711 and switch the colour channels of the RGB LED on and
+		off.
+		\item esp\_timer\_start\_periodic(timer, period) starts the periodic
+		timer for the measurement interval and the intake time window.
+		\item portENTER\_CRITICAL(mux) and portEXIT\_CRITICAL(mux) disable and
+		re-enable interrupts while the HX711 is being read.
+		\item ble\_gatts\_notify\_custom(conn\_handle, chr\_val\_handle, om) from
+		NimBLE sends a message to the Raspberry Pi.
+	\end{itemize}
 
+mbedTLS (ESP32 and Raspberry Pi)
+	\begin{itemize}
+		\item mbedtls\_ecdh\_calc\_secret(ctx, olen, buf, blen, f\_rng, p\_rng)
+		computes the shared secret during the key exchange.
+		\item mbedtls\_gcm\_crypt\_and\_tag(ctx, mode, length, iv, iv\_len, add,
+		add\_len, input, output, tag\_len, tag) encrypts a message.
+		\item mbedtls\_gcm\_auth\_decrypt(ctx, length, iv, iv\_len, add, add\_len,
+		tag, tag\_len, input, output) decrypts a message and verifies its
+		integrity.
+	\end{itemize}
+
+Raspberry Pi
+	\begin{itemize}
+		\item pthread\_create(thread, attr, start\_routine, arg) creates a
+		thread.
+		\item curl\_easy\_perform(handle) from libcurl sends the HTTPS request
+		to the Telegram Bot API.
+		\item clock\_gettime(clock\_id, tp) reads the system time synchronised
+		via NTP.
+		\item MHD\_start\_daemon(flags, port, apc, apc\_cls, dh, dh\_cls, ...)
+		from libmicrohttpd starts the HTTP server for the web interface.
+		\item MHD\_queue\_response(connection, status\_code, response) from
+		libmicrohttpd sends the response to the browser.
+		\item WriteValue(value, options) and StartNotify() are methods of the
+		BlueZ D-Bus interface org.bluez.GattCharacteristic1 and send messages
+		to the ESP32 or enable reception.
+	\end{itemize}
+
+For Bluetooth, the NimBLE stack included in ESP-IDF is used on the ESP32 and
+BlueZ is used on the Raspberry Pi.
+
+The libraries used are available at ESP-IDF
+\url{https://github.com/espressif/esp-idf}, mbedTLS
+\url{https://github.com/Mbed-TLS/mbedtls}, BlueZ
+\url{https://git.kernel.org/pub/scm/bluetooth/bluez.git}, libcurl
+\url{https://curl.se/libcurl/} and libmicrohttpd
+\url{https://www.gnu.org/software/libmicrohttpd/}.
 
 \subsection{Interrupts}
 
-Definition of priorities.
+The ESP32 uses a timer interrupt for the measurement interval and the intake
+time window, as well as interrupts from the Bluetooth stack when messages are
+received. The interrupt routines only notify the responsible thread. The
+thread priorities follow the rule of safety before communication before
+logging (see Table~\ref{tab:prio}).
 
+\begin{table}[H]
+	\centering
+	\begin{tabular}{|l|c|}
+		\hline
+		Thread & Priority \\
+		\hline
+		Weight measurement & high \\
+		Dose evaluation and LED status display & high \\
+		Bluetooth communication & medium \\
+		Logging & low \\
+		\hline
+	\end{tabular}
+	\caption{Thread priorities on the ESP32}
+	\label{tab:prio}
+\end{table}
+
+Reading the HX711 is time-critical, as it enters power-down mode if the clock
+line remains HIGH for too long (more than 60 µs). It is therefore performed
+without interruption by other interrupts.
+
+On the Raspberry Pi, interrupts are managed by the operating system (Linux).
+Bluetooth communication, time control, the Telegram connection and the web
+interface each run in their own POSIX thread.
 
 \subsection{Pinout}
 
+The load cell is connected to the ESP32 via the HX711. The RGB LED is
+connected directly to three GPIO pins that are configured as digital outputs.
+Since the KY-009 module has no built-in series resistors, a series resistor is
+placed in each colour line. The resistors are calculated using
+$R = (3.3\,\mathrm{V} - U_F) / 20\,\mathrm{mA}$. With a forward voltage $U_F$
+of approximately 1.8~V for red and 2.8~V for green and blue, this results in
+75~$\Omega$ and 25~$\Omega$ respectively. The next higher standard values of
+82~$\Omega$ and 27~$\Omega$ are chosen, which keeps the current per colour
+channel just below 20~mA. Since there are variants of the module in which red
+and green are swapped, the pin assignment is checked individually before the
+final wiring (source
+\url{https://arduinomodules.info/ky-009-rgb-full-color-led-smd-module/}).
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{|l|l|}
+		\hline
+		Load cell (wire) & HX711 \\
+		\hline
+		Red & E+ \\
+		Black & E$-$ \\
+		White & A$-$ \\
+		Green & A+ \\
+		\hline
+	\end{tabular}
+	\caption{Pinout load cell and HX711}
+	\label{tab:pinout-loadcell}
+\end{table}
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{|l|l|}
+		\hline
+		ESP32 pin & HX711 \\
+		\hline
+		3V3 & VCC \\
+		GND & GND \\
+		GPIO 19 & DT (data) \\
+		GPIO 18 & SCK (clock) \\
+		\hline
+	\end{tabular}
+	\caption{Pinout ESP32 and HX711}
+	\label{tab:pinout-hx711}
+\end{table}
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{|l|l|}
+		\hline
+		ESP32 pin & KY-009 \\
+		\hline
+		GPIO 25 (via 82~$\Omega$) & R (red) \\
+		GPIO 26 (via 27~$\Omega$) & G (green) \\
+		GPIO 27 (via 27~$\Omega$) & B (blue) \\
+		GND & $-$ (common cathode) \\
+		\hline
+	\end{tabular}
+	\caption{Pinout ESP32 and RGB LED (KY-009)}
+	\label{tab:pinout-led}
+\end{table}

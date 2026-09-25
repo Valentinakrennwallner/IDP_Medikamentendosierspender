@@ -1,17 +1,58 @@
 \section{Project description}
 \label{chapter1}
 
-\subsection{Problem desription}
+This project develops a medication dispenser that supports elderly people in
+taking their medication regularly and correctly. At the scheduled intake time,
+the system sends a push notification reminding the person of the due dose and
+then uses a weight sensor to verify whether the correct amount was taken. The
+result is shown directly on the device via an RGB LED. The system is
+implemented with an ESP32 as the sensor node and a Raspberry Pi 4B as the
+gateway, which communicate with each other via encrypted Bluetooth.
+
+\subsection{Problem description}
+
+Many elderly people have to take several medications at fixed times every day.
+A typical example is a 71-year-old man living alone who keeps his tablets in a
+weekly pill organiser (Monday to Sunday). Simple reminders such as an alarm
+clock or a push notification only ensure that the person knows that a dose is
+due. However, they do not guarantee that the dose is actually taken correctly.
+The notification may be overlooked, the dose may be forgotten despite the
+reminder, or the compartment may have been filled incorrectly.
+
+The core problem is therefore that knowing is not the same as acting
+correctly. Incorrect dosing (overdose, underdose or a missed dose) poses a
+safety-relevant risk to the person's health. In addition, intake times and
+medication data are sensitive health data that must be protected accordingly.
 
 \begin{figure}[h]
-	\includegraphics[height=50mm]{images/system}
 	\centering
-	\caption{system description}
+	\includegraphics[width=\textwidth]{images/system_overview.png}
+	\caption{System description (AI-generated image)}
 	\label{fig:system}
 \end{figure}
 
-Wenn ein anderes Bild eingefügt werden soll, dieses einfach in den images Ordner kopieren und den Namen in der Pfadangabe ändern, \\ bsp: includegraphics[height=50mm]{images/anderesBild}
+\subsection{Proposed solution}
 
+The medication dispenser extends the reminder with verified feedback. At the
+scheduled intake time, the person receives a push notification on their mobile
+phone stating which dose has to be taken (target state). The weekly pill
+organiser remains in use as a supply, but only the daily ration is monitored.
+The medication for the current day is kept in a container on a weight sensor.
+This sensor measures the change in weight when the medication is taken and
+thus verifies the action that was actually performed (actual state).
 
+The system compares the actual state with the target state and displays the
+result via an RGB LED. Green means that the correct dose was taken, blue
+indicates a deviation outside the defined tolerance and red indicates a
+critical state (overdose, underdose or missed dose).
 
+\subsection{System overview}
 
+The system consists of two microcontrollers (see
+Figure~\ref{fig:system}). The ESP32 serves as the sensor node. It reads the
+load cell via the HX711 amplifier, detects changes in weight, evaluates the
+dose taken and controls the RGB LED (KY-009). Communication with the Raspberry
+Pi takes place via Bluetooth. The Raspberry Pi 4B acts as the gateway. It
+receives the measurement results from the ESP32, synchronises the time via an
+NTP server, sends push notifications via the Telegram Bot API and provides a
+web interface for querying the data.

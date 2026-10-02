@@ -38,6 +38,10 @@
 
 \usepackage{float}
 
+\usepackage{tikz}
+\usetikzlibrary{calc,trees,positioning,arrows,chains,shapes.geometric,  decorations.pathreplacing,decorations.pathmorphing,shapes,  matrix,shapes.symbols}
+
+
 \usepackage{latexsym}
 
 \usepackage{color}
@@ -55,12 +59,12 @@
 \usepackage{fancyhdr}
 \usepackage{multirow}
 \ifpdf
-  \usepackage[pdftex]{graphicx}
+  \usepackage{graphicx}
   \DeclareGraphicsExtensions{.pdf,.jpg,.png}
   \pdfcompresslevel=9
   \pdfpageheight=297mm
   \pdfpagewidth=210mm
-\usepackage{fixltx2e}
+%\usepackage{fixltx2e}
   \usepackage[         % hyperref should be last package loaded
     pdftex,
     bookmarks,

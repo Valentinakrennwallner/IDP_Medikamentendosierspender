@@ -4,24 +4,26 @@
 
 \subsection{Safety related requirements}
 
-
-
-
 	\begin{enumerate}[label*=\arabic*.]
 		\item \label{req.1}  Requirement: \\
-		At program start all safety related functions must be tested.  \\
-		Folge Requirements: \ref{req.1.1} , \ref{req.1.2}  
+		The Raspberry Pi and the ESP32 have a consistent, valid time they obtain from the NTP server.\\
+		Folge Requirements: \ref{req.1}
 		\begin{enumerate}[label*=\arabic*.]
-			\item \label{req.1.1}  Requirement  \\
-			At program start the LED indicating an error must be tested.\ref{req.2}\\ 
-			\item \label{req.1.2} Requirement   \\
-			At program start the USART sending error messages must be tested.\\ 
+			\item \label{req.1.1}  Requirement:  \\
+			\item \label{req.1.2} Requirement:   \\
 		\end{enumerate}
-		\item \label{req.2} Requirement:   \\
+		\item \label{req.2} Requirement:  
+		The HX711 sensor provides predictable and pausible values.\ref{req.2}\\ 
+
 		\item \label{req.3} Requirement:   
+		ESP32's Bluetooth connection to the Raspberry Pi is established. \ref{req.3}\\ 
+
 	\end{enumerate}
 
 \subsection{Security related requirements}
 
 
 \subsection{Requirements with no influence on Safety and Security}
+If the Raspberry Pi does not have power, the ESP32 will continue to run on its own for 10 hours. \\
+If the mobile device is switched off, the person may forget to take their medication. \\
+If the LEDs are not working, an overdose or underdose cannot be detected. \\

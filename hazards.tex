@@ -5,16 +5,21 @@
 
 
 	\begin{enumerate}
-		\item Hazard 1: \\
-			Requirement see \ref{req.1.1} \\
-		\item Hazard 2:
-		\item Hazard 3:
+		\item Hazard 1: Raspberry Pi- no connection to NTP-Server.
+		If the Raspberry Pi does not connect to the NTP server after x amount of time, it sends an alert via Telegram. \\
+			Requirement see \ref{req.1} \\
+		\item Hazard 2: HX711 sensor is not delivering any values or incorrect values.
+		If the HX711 sensor is not working, the red LED flashes and the Raspberry Pi should report the issue via Telegeram (woran erkennen wir, dass Sensor nicht funktioniert + 2x Polling). \\
+			Requirement see \ref{req.2} \\
+		\item Hazard 3: The Bluetooth connection between the ESP32 and the Raspberry Pi is not established.
+		ESP performs autonomous evaluations and displays values on LEDs and the Raspberry Pi reports the issue via Telegram (heartbeat). \\
+			Requirement see \ref{req.3} \\
 	\end{enumerate}
 	
 \subsection{Identified hazards without countermeasures }
 
 	\begin{enumerate}
-		\item Hazard 1: \\
-		\item Hazard 2:
-		\item Hazard 3:
+		\item Hazard 1: Raspberry Pi does not have power \\
+		\item Hazard 2: Mobile phone is switched off
+		\item Hazard 3: LED mechanically or electrically damaged
 	\end{enumerate}

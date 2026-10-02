@@ -3,3 +3,36 @@
 
 
 Hier bitte Sequenzdiagramme, bzw. Programmablaufdiagramme
+
+
+% Source - https://tex.stackexchange.com/q/317647
+% Posted by André, modified by community. See post 'Timeline' for change history
+% Retrieved 2026-10-02, License - CC BY-SA 3.0
+
+
+
+
+\tikzstyle{block} = [rectangle, draw, text width=10em, text centered, rounded      corners, minimum height=3em]
+\begin{tikzpicture}
+ [node distance=1.35cm,
+ start chain=going below,]
+\node (n1) at (0,0) [block]  {Systemstart \& Initalisierung};
+\node (n2) [block, below of=n1] {Bluetooth Verbindung aufbauen (ESP32 \& Raspberry Pi)};
+\node (n3) [block, below of=n2] {Betriebsbereit};
+\node (n4) [block, below of=n3] {Model set-up (SB \& NH)};
+\node (n5) [block, below of=n4] {Simulations};
+\node (n6) [block, below of=n5] {Sensitivity analysis};
+\node (n7) [block, below of=n6] {Model update};
+\node (n8) [block, below of=n7] {Conclusions and recommendations};
+% Connectors
+\draw [->] (n1) -- (n2);
+\draw [->] (n2) -- (n3);
+\draw [->] (n3) -- (n4);
+\draw [->] (n4) -- (n5);
+\draw [->] (n5) -- (n6);
+\draw [->] (n6) -- (n7);
+\draw [->] (n6) -- (n7);
+\draw [->] (n7) -- (n8);
+\draw [->] (n7.east) -| ++(1,0) |- (n6.east);
+\draw [->] (n7.west) -| ++(-1,0) |- (n5.west);
+\end{tikzpicture}

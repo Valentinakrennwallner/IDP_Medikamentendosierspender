@@ -28,7 +28,7 @@ implemented in C according to MISRA C and is divided into several threads.
 			values into grams, smooths them and checks them for plausibility. \\
 			Functions: weight\_read(), weight\_tare() \\
 			Data: Raw value, calibration factor, tare offset, weight in grams \\
-			Requirements see: \ref{req.s.1}
+			Requirements see: \ref{req.2.1}--\ref{req.2.5}, \ref{req.2.7}
 
 		\item Dose evaluation and intake monitoring (ESP32): \\
 			Description: Compares the weight difference during intake with the
@@ -37,14 +37,14 @@ implemented in C according to MISRA C and is divided into several threads.
 			missed. \\
 			Functions: dose\_evaluate(), schedule\_check() \\
 			Data: Target weight, tolerance, intake times, status \\
-			Requirements see: \ref{req.s.2}
+			Requirements see: \ref{req.2.6}, \ref{req.3.2}, \ref{req.3.3}
 
 		\item LED status display (ESP32): \\
 			Description: Displays the status via the RGB LED and tests all
 			three colour channels at program start. \\
 			Functions: led\_set\_status(), led\_self\_test() \\
 			Data: Current status \\
-			Requirements see: \ref{req.s.3}
+			Requirements see: \ref{req.2.6}, \ref{req.3.3}
 
 		\item Intake schedule and time control (Raspberry Pi): \\
 			Description: Manages the intake times and target weights,
@@ -52,7 +52,7 @@ implemented in C according to MISRA C and is divided into several threads.
 			the intake time. The time is synchronised via NTP. \\
 			Functions: schedule\_load(), schedule\_check\_due() \\
 			Data: Intake schedule, system time \\
-			Requirements see: \ref{req.s.4}
+			Requirements see: \ref{req.1.1}--\ref{req.1.4}
 	\end{enumerate}
 
 \subsubsection{Security related modules}
@@ -64,21 +64,14 @@ implemented in C according to MISRA C and is divided into several threads.
 			protects against replay attacks. \\
 			Functions: bt\_send(), bt\_receive() \\
 			Data: Session key, sequence counter, message buffer \\
-			Requirements see: \ref{req.sec.1}
+			Requirements see: \ref{req.3.1}--\ref{req.3.5}
 
 		\item Telegram connection (Raspberry Pi): \\
 			Description: Sends reminders and warnings via the Telegram Bot API
 			over HTTPS. \\
 			Functions: telegram\_send() \\
 			Data: Bot token, chat ID, message text \\
-			Requirements see: \ref{req.sec.2}
-
-		\item Web interface (Raspberry Pi): \\
-			Description: Allows the intake schedule to be configured and the
-			history to be queried. \\
-			Functions: web\_handle\_request() \\
-			Data: Intake schedule, intake history \\
-			Requirements see: \ref{req.sec.3}
+			Requirements see: \ref{req.1.2}, \ref{req.2.6}, \ref{req.3.5}
 	\end{enumerate}
 
 \subsubsection{Modules with no influence on safety and security}
@@ -86,7 +79,8 @@ implemented in C according to MISRA C and is divided into several threads.
 		\item System start and logging (ESP32 and Raspberry Pi): \\
 			Description: Initialises the hardware and modules, starts the
 			threads and outputs status messages without health data. \\
-			Functions: app\_main() or main()
+			Functions: app\_main() or main() \\
+			Requirements see: \ref{req.4}, \ref{req.5}
 	\end{enumerate}
 
 \subsection{Libraries}
@@ -125,10 +119,6 @@ Raspberry Pi
 		to the Telegram Bot API.
 		\item clock\_gettime(clock\_id, tp) reads the system time synchronised
 		via NTP.
-		\item MHD\_start\_daemon(flags, port, apc, apc\_cls, dh, dh\_cls, ...)
-		from libmicrohttpd starts the HTTP server for the web interface.
-		\item MHD\_queue\_response(connection, status\_code, response) from
-		libmicrohttpd sends the response to the browser.
 		\item WriteValue(value, options) and StartNotify() are methods of the
 		BlueZ D-Bus interface org.bluez.GattCharacteristic1 and send messages
 		to the ESP32 or enable reception.
@@ -140,9 +130,8 @@ BlueZ is used on the Raspberry Pi.
 The libraries used are available at ESP-IDF
 \url{https://github.com/espressif/esp-idf}, mbedTLS
 \url{https://github.com/Mbed-TLS/mbedtls}, BlueZ
-\url{https://git.kernel.org/pub/scm/bluetooth/bluez.git}, libcurl
-\url{https://curl.se/libcurl/} and libmicrohttpd
-\url{https://www.gnu.org/software/libmicrohttpd/}.
+\url{https://git.kernel.org/pub/scm/bluetooth/bluez.git} and libcurl
+\url{https://curl.se/libcurl/}.
 
 \subsection{Interrupts}
 
@@ -173,8 +162,8 @@ line remains HIGH for too long (more than 60 µs). It is therefore performed
 without interruption by other interrupts.
 
 On the Raspberry Pi, interrupts are managed by the operating system (Linux).
-Bluetooth communication, time control, the Telegram connection and the web
-interface each run in their own POSIX thread.
+Bluetooth communication, time control and the Telegram connection each run
+in their own POSIX thread.
 
 \subsection{Pinout}
 

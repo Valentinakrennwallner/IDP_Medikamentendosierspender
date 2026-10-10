@@ -1,19 +1,112 @@
 \section{Threat identification}
-\label{chapter3}
 
 \subsection{Identified threats and countermeasures}
+\begin{enumerate}
+  \item \hl{Threat 1: Eavesdropping on the Bluetooth connection.
+  An attacker within radio range records the Bluetooth traffic between the ESP32
+  and the Raspberry Pi and reads intake times, target weights and intake results.
+  These are sensitive health data. To prevent this, the two devices perform an
+  ECDHE key exchange each time a connection is established and encrypt all
+  messages with AES-GCM using the resulting session key (see module
+  ``Bluetooth communication and encryption'' in Section 2.1). As a new session
+  key is agreed for every connection, the recorded traffic does not reveal
+  the content of the messages.}\\
+  \hl{See Requirement 3.}
 
+  \item \hl{Threat 2: Manipulation or replay of Bluetooth messages.
+  An attacker modifies, injects or replays messages. A modified schedule or
+  target weight would lead to a wrong dose evaluation. A replayed result or
+  heartbeat could hide a missed dose or an ESP32 without power and would
+  suppress the Telegram warning (see Hazard 3). Since all messages are
+  encrypted with AES-GCM, modified messages are detected by the authentication
+  tag and are rejected. In addition, every message carries a sequence number, so
+  that replayed messages are recognised and discarded (see module
+  ``Bluetooth communication and encryption'' in Section 2.1).}\\
+  \hl{See Requirement 3.}
 
-	\begin{enumerate}
-		\item Threat 1: 
-		\item Threat 2:
-		\item Threat 3:
-	\end{enumerate}
-	
+  \item \hl{Threat 3: Disclosure of health data via the log output.
+  The log output of the ESP32 and the Raspberry Pi can be read by anyone with
+  access to the serial interface or the log files. If it contained intake times,
+  doses or weights, these health data would be disclosed. Therefore, the module
+  ``System start and logging'' only outputs status messages (start-up,
+  connection state, faults) without health data.}\\
+  \hl{See Requirement 4, 5.}
+
+  \item \hl{Threat 4: Disruption of the Bluetooth connection (jamming,
+  connection drops).
+  An attacker deliberately interferes with the radio channel or provokes
+  repeated connection drops, so that the ESP32 and the Raspberry Pi can no
+  longer communicate. This corresponds to the loss of connection described in
+  Hazard 3 and is handled by the same countermeasures: the ESP32 makes three
+  connection attempts 5 s apart and then switches to autonomous mode. There it
+  continues to evaluate the intake with the last stored schedule, displays the
+  result via the RGB LED, buffers the results and keeps trying to reconnect in
+  the background (see Figure 3). The Raspberry Pi detects the disruption by the
+  missing heartbeat (every 30 s) and sends a one-time Telegram alert after 2 min
+  (see Figure 4). The safety function, i.e. the feedback via the LED, is
+  therefore maintained even when the connection is disrupted.}\\
+  \hl{Requirement see 3.}
+
+  \item \hl{Threat 5: Manipulation of the scale outside the intake window.
+  A person or an attacker with access to the container places objects on the
+  load cell or removes content in order to falsify the evaluation, or damages
+  the load cell or its wiring. Such interference outside the intake window is
+  detected as part of Hazard 2: a weight change of more than 5 g outside an
+  intake window as well as implausible values (raw value at the limit of the
+  24-bit range, weight below {$-5$} g or above the capacity of the load cell) are
+  considered a faulty measurement. After two further faulty measurements, the
+  ESP32 suspends the dose evaluation, the red LED flashes and the Raspberry Pi
+  sends an alert via Telegram. The sensor is checked again every 10 s.}\\
+  \hl{See Requirement 3.}
+\end{enumerate}
+
 \subsection{Identified threats without countermeasures}
+\begin{enumerate}
+  \item \hl{Threat 1: Physical access to the devices.
+  A person with physical access to the devices can read the stored schedule on
+  the ESP32 or the Telegram bot token on the Raspberry Pi, exchange the tablets
+  in the container or tamper with the load cell. Protection of the stored data
+  (e.g. flash encryption, secure boot) and a tamper-proof housing are not part of
+  this project. The system is intended for use in the private home of the
+  person, so physical access is assumed to be controlled by the person.}
 
-	\begin{enumerate}
-		\item Threat 1: 
-		\item Threat 2:
-		\item Threat 3:
-	\end{enumerate}
+  \item \hl{Threat 2: Exposure of health data on the Telegram side.
+  The reminders contain the due dose. The connection to the Telegram Bot API is
+  protected by HTTPS, but the messages are not end-to-end encrypted and are
+  processed by an external service. Furthermore, a third party who gains
+  access to the mobile phone or the Telegram account of the person can read the
+  messages. The system has no influence on this and cannot detect it. The
+  messages are therefore limited to the information necessary for the
+  reminder (see Figure 1).}
+
+  \item \hl{Threat 3: Man-in-the-middle attack during the key exchange.
+  The ECDHE key exchange protects against passive eavesdropping, but the two
+  devices do not authenticate each other. An attacker who actively intervenes
+  while a connection is being established could agree on a separate key with each
+  side and thereby read and modify all messages (see Threats 1 and 2 in
+  Section 5.1). Likewise, a foreign device could impersonate the Raspberry Pi
+  and transmit a modified schedule. Since the ESP32 stores the last received
+  schedule in non-volatile memory and continues to use it in autonomous mode
+  (see Hazard 3), a manipulated schedule would remain effective even after the
+  attack has ended. Authentication of the devices, e.g. via a pre-shared key, is
+  not part of this project. The attack requires the attacker to be within radio
+  range at the moment of the connection setup.}
+
+  \item \hl{Threat 4: Manipulated time through forged NTP responses.
+  NTP is an unauthenticated protocol. An attacker in the same network can
+  provide the Raspberry Pi with a wrong but formally valid time. The reminders
+  would then be sent at the wrong time, and the ESP32 would determine the
+  intake window based on the wrong time, as the Raspberry Pi transmits the
+  current time to the ESP32 each time a connection is established (see
+  Section 1.3 and Figure 4). The countermeasures of Hazard 1 only take effect
+  if no time is received, not if the time is forged. Protection, e.g. via NTS
+  or several independent time sources, is not part of this project.}
+
+  \item \hl{Threat 5: Circumvention of the verification within the intake window.
+  The evaluation by {\texttt{dose\_evaluate()}} compares the weight change with
+  the target weight. Within the intake window, the system therefore cannot
+  distinguish whether the tablets were actually taken, were merely removed, or
+  whether the weight change was caused by other objects. The scale verifies the
+  removal, not the intake (see Section 1.2). Additional detection, e.g. through
+  further sensors, is not part of this project.}
+\end{enumerate}

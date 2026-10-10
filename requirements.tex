@@ -95,14 +95,42 @@
 
 \subsection{Security related requirements}
 
-	\begin{enumerate}[label*=\arabic*., start=4]
-		\item \label{req.4} Requirement: \\
-		Log messages must not contain any health data (intake times, doses, weights).
-	\end{enumerate}
+\begin{enumerate}[label*=\arabic*., start=4]
+    \item \label{req.4} Requirement: \\
+    Health data (intake times, doses, weights) and the communication between the components must be protected against unauthorised disclosure and manipulation. \\
+    Folge Requirements: \ref{req.4.1}, \ref{req.4.2}, \ref{req.4.3}, \ref{req.4.4}, \ref{req.4.5}, \ref{req.4.6}, \ref{req.4.7}
+    \begin{enumerate}[label*=\arabic*.]
+        \item \label{req.4.1} Requirement \\
+        Log messages must not contain any health data (intake times, doses, weights).
+        \item \label{req.4.2} Requirement \\
+        The ESP32 and the Raspberry Pi must perform an ECDHE key exchange each time a Bluetooth connection is established and must use a new session key for every connection.
+        \item \label{req.4.3} Requirement \\
+        All messages between the ESP32 and the Raspberry Pi must be encrypted and authenticated with AES-GCM using the session key.
+        \item \label{req.4.4} Requirement \\
+        Every message must contain a sequence number. The receiver must discard messages with an invalid authentication tag or with a sequence number that is not higher than the last accepted one.
+        \item \label{req.4.5} Requirement \\
+        The Raspberry Pi must send messages to the Telegram Bot API only via HTTPS.
+        \item \label{req.4.6} Requirement \\
+        Telegram messages must be limited to the information necessary for the reminder or warning (target dose, fault notice).
+        \item \label{req.4.7} Requirement \\
+        Session keys and the Telegram bot token must not be written to the log output.
+    \end{enumerate}
+\end{enumerate}
 
 \subsection{Requirements with no influence on Safety and Security}
 
-	\begin{enumerate}[label*=\arabic*., start=5]
-		\item \label{req.5} Requirement: \\
-		The ESP32 and the Raspberry Pi must output status messages (start-up, connection state, faults) via the log output.
-	\end{enumerate}
+\begin{enumerate}[label*=\arabic*., start=5]
+    \item \label{req.5} Requirement: \\
+    The ESP32 and the Raspberry Pi must output status messages (start-up, connection state, faults) via the log output. \\
+    Folge Requirements: \ref{req.5.1}, \ref{req.5.2}, \ref{req.5.3}, \ref{req.5.4}
+    \begin{enumerate}[label*=\arabic*.]
+        \item \label{req.5.1} Requirement \\
+        The ESP32 and the Raspberry Pi must output a status message once the hardware and the modules have been initialised and the threads have been started.
+        \item \label{req.5.2} Requirement \\
+        The ESP32 and the Raspberry Pi must output a status message each time the Bluetooth connection is established or lost, and when the ESP32 switches to autonomous mode.
+        \item \label{req.5.3} Requirement \\
+        The ESP32 and the Raspberry Pi must output a status message when a fault occurs (no valid time, sensor fault, connection loss, missing heartbeat).
+        \item \label{req.5.4} Requirement \\
+        The logging must run with the lowest thread priority so that it cannot delay the weight measurement, the dose evaluation or the LED status display.
+    \end{enumerate}
+\end{enumerate}

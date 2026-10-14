@@ -36,8 +36,8 @@
 			Requirement see \ref{req.1} \\
 		\item Hazard 2: HX711 sensor is not delivering any values or incorrect values. \\
 		A measurement is considered faulty if the HX711 does not deliver a value within 200\,ms, the raw value is at
-		the limit of the 24-bit range (broken cable), the weight is below $-5$\,g or exceeds the capacity of the load cell
-		(e.g.\ wrong orientation) or the weight changes by more than 5\,g outside an intake window
+		the limit of the 24-bit range (broken cable), the weight is below $-5$\,g or above 100\,g, the capacity of the load cell
+		(e.g.\ wrong orientation), or the weight changes by more than 5\,g outside an intake window
 		(objects added or removed). In this case the sensor is polled two more times. If both measurements are also
 		faulty, the ESP32 suspends the dose evaluation, the red LED flashes and the fault is reported to the Raspberry Pi,
 		which sends an alert via Telegram. The sensor is checked again every 10\,s. \\
@@ -54,14 +54,14 @@
 \subsection{Identified hazards without countermeasures}
 
 	\begin{enumerate}
-		\item Hazard 1: Raspberry Pi does not have power.
+		\item Hazard 1: Raspberry Pi does not have power. \\
 		No reminders or alerts can be sent via Telegram. The ESP32 continues in autonomous mode (see Hazard 3) as long as 
 		it has a valid schedule and time, but the person only receives feedback via the LED. A backup power supply is not 
 		part of this project.
-		\item Hazard 2: Mobile phone is switched off.
+		\item Hazard 2: Mobile phone is switched off. \\
 		The Telegram reminder does not reach the person, so the dose may be forgotten. The system cannot detect whether 
 		a message has been received or read.
-		\item Hazard 3: LED mechanically or electrically damaged.
+		\item Hazard 3: LED mechanically or electrically damaged. \\
 		The ESP32 has no feedback on whether the LED actually lights up, so a wrong or missing status display cannot be 
 		detected. The LED self-test at start-up only allows the person to check the LED visually.
 	\end{enumerate}

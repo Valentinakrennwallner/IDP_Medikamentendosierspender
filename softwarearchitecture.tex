@@ -64,14 +64,14 @@ implemented in C according to MISRA C and is divided into several threads.
 			protects against replay attacks. \\
 			Functions: bt\_send(), bt\_receive() \\
 			Data: Session key, sequence counter, message buffer \\
-			Requirements see: \ref{req.3.1}--\ref{req.3.5}
+			Requirements see: \ref{req.3.1}--\ref{req.3.5}, \ref{req.4.1}--\ref{req.4.3}
 
 		\item Telegram connection (Raspberry Pi): \\
 			Description: Sends reminders and warnings via the Telegram Bot API
 			over HTTPS. \\
 			Functions: telegram\_send() \\
 			Data: Bot token, chat ID, message text \\
-			Requirements see: \ref{req.1.2}, \ref{req.2.6}, \ref{req.3.5}
+			Requirements see: \ref{req.1.2}, \ref{req.2.6}, \ref{req.3.5}, \ref{req.4.5}
 	\end{enumerate}
 
 \subsubsection{Modules with no influence on safety and security}
@@ -80,7 +80,7 @@ implemented in C according to MISRA C and is divided into several threads.
 			Description: Initialises the hardware and modules, starts the
 			threads and outputs status messages without health data. \\
 			Functions: app\_main() or main() \\
-			Requirements see: \ref{req.4}, \ref{req.5}
+			Requirements see: \ref{req.4.4}, \ref{req.5.1}--\ref{req.5.4}
 	\end{enumerate}
 
 \subsection{Libraries}
@@ -150,6 +150,7 @@ logging (see Table~\ref{tab:prio}).
 		Weight measurement & high \\
 		Dose evaluation and LED status display & high \\
 		Bluetooth communication & medium \\
+		Heartbeat & medium \\
 		Logging & low \\
 		\hline
 	\end{tabular}
@@ -171,11 +172,11 @@ The load cell is connected to the ESP32 via the HX711. The RGB LED is
 connected directly to three GPIO pins that are configured as digital outputs.
 Since the KY-009 module has no built-in series resistors, a series resistor is
 placed in each colour line. The resistors are calculated using
-$R = (3.3\,\mathrm{V} - U_F) / 20\,\mathrm{mA}$. With a forward voltage $U_F$
-of approximately 1.8~V for red and 2.8~V for green and blue, this results in
-75~$\Omega$ and 25~$\Omega$ respectively. The next higher standard values of
-82~$\Omega$ and 27~$\Omega$ are chosen, which keeps the current per colour
-channel just below 20~mA. Since there are variants of the module in which red
+$R = (3.3\,\mathrm{V} - U_F) / I$. With a forward voltage $U_F$ of
+approximately 1.8~V for red and 2.8~V for green and blue, 220~$\Omega$ is
+chosen for red (approx.\ 7~mA) and 160~$\Omega$ for green and blue
+(approx.\ 3~mA). These currents are sufficient for a status display and stay
+well below the maximum current of an ESP32 GPIO pin. Since there are variants of the module in which red
 and green are swapped, the pin assignment is checked individually before the
 final wiring (source
 \url{https://arduinomodules.info/ky-009-rgb-full-color-led-smd-module/}).
@@ -218,9 +219,9 @@ final wiring (source
 		\hline
 		ESP32 pin & KY-009 \\
 		\hline
-		GPIO 25 (via 82~$\Omega$) & R (red) \\
-		GPIO 26 (via 27~$\Omega$) & G (green) \\
-		GPIO 27 (via 27~$\Omega$) & B (blue) \\
+		GPIO 25 (via 220~$\Omega$) & R (red) \\
+		GPIO 26 (via 160~$\Omega$) & G (green) \\
+		GPIO 27 (via 160~$\Omega$) & B (blue) \\
 		GND & $-$ (common cathode) \\
 		\hline
 	\end{tabular}

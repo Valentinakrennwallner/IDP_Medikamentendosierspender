@@ -91,5 +91,19 @@
 \subsection{Requirements with no influence on Safety and Security}
 
 	\begin{enumerate}[label*=\arabic*., start=5]
-		\item \label{req.5} Requirement: The ESP32 and the Raspberry Pi must output status messages (start-up, connection state, faults) via the log output.
+		\item \label{req.5} Requirement: The ESP32 and the Raspberry Pi must output status messages (start-up, connection state, faults) via the log output. \\
+		Folge Requirements: \ref{req.5.1}, \ref{req.5.2}, \ref{req.5.3}, \ref{req.5.4}
+		\begin{enumerate}[label*=\arabic*.]
+			\item \label{req.5.1} Requirement: The ESP32 must output its log messages via the serial interface (USB/UART) using the ESP-IDF logging functions. The Raspberry Pi must output its log messages on the terminal. Log messages are not stored permanently.
+			\item \label{req.5.2} Requirement: Every log message must contain a timestamp, the name of the module and a log level (error, warning, info).
+			\item \label{req.5.3} Requirement: At program start, the ESP32 and the Raspberry Pi must output a start-up message containing the software version.
+			\item \label{req.5.4} Requirement: Logging must run in the thread with the lowest priority (see Table~\ref{tab:prio}) and must not block other threads. If the log output fails, operation must continue without logging.
+		\end{enumerate}
+
+		\item \label{req.6} Requirement: The source code must be maintainable and traceable. \\
+		Folge Requirements: \ref{req.6.1}, \ref{req.6.2}
+		\begin{enumerate}[label*=\arabic*.]
+			\item \label{req.6.1} Requirement: The software of both devices must be written in C according to the MISRA C guidelines.
+			\item \label{req.6.2} Requirement: The source code and this design document must be managed in the shared Git repository of the group.
+		\end{enumerate}
 	\end{enumerate}

@@ -13,11 +13,13 @@ components and communication paths of the system.
 	\label{fig:architecture}
 \end{figure}
 
-The intake times and target weights are managed on the Raspberry Pi and are
-transmitted to the ESP32 via Bluetooth together with the current time. The
+The intake schedule is managed on the Raspberry Pi. For each intake time it
+contains the medications, their quantity and the resulting target weight. Only
+the intake times and target weights of the current day are transmitted to the
+ESP32 via Bluetooth together with the current time at start-up; the names of the medications remain on the
+Raspberry Pi and are only used for the Telegram reminder. The
 evaluation of the intake takes place locally on the ESP32, so that the LED
-display also works when the connection is interrupted. The software is
-implemented in C according to MISRA C and is divided into several threads.
+display also works when the connection is interrupted.
 
 \subsection{Software modules}
 
@@ -25,34 +27,46 @@ implemented in C according to MISRA C and is divided into several threads.
 	\begin{enumerate}
 		\item Weight measurement (ESP32): \\
 			Description: Reads the load cell via the HX711, converts the raw
-			values into grams, smooths them and checks them for plausibility. \\
-			Functions: weight\_read(), weight\_tare() \\
+			values into grams, smooths them and checks them for plausibility.
+			The calibration factor and the tare offset of the empty container
+			are determined once during commissioning using a reference weight
+			and are stored in non-volatile memory (NVS). At start-up, the
+			module checks whether the filling of the container corresponds to
+			the sum of the target weights of the day. \\
+			Functions: weight\_read(), weight\_calibrate(),
+			weight\_check\_filling() \\
 			Data: Raw value, calibration factor, tare offset, weight in grams \\
-			Requirements see: \ref{req.2.1}--\ref{req.2.5}, \ref{req.2.7}
+			Requirements see: \ref{req.2.1}--\ref{req.2.5}, \ref{req.2.7}--\ref{req.2.10}
 
 		\item Dose evaluation and intake monitoring (ESP32): \\
 			Description: Compares the weight difference during intake with the
 			target weight and determines the status. If nothing is taken within
 			a time window after the intake time, the dose is considered
-			missed. \\
+			missed. A weight change outside an intake window is reported as
+			an unscheduled removal. \\
 			Functions: dose\_evaluate(), schedule\_check() \\
 			Data: Target weight, tolerance, intake times, status \\
-			Requirements see: \ref{req.2.6}, \ref{req.3.2}, \ref{req.3.3}
+			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.11}, \ref{req.3.2}, \ref{req.3.3}
 
 		\item LED status display (ESP32): \\
 			Description: Displays the status via the RGB LED and tests all
 			three colour channels at program start. \\
 			Functions: led\_set\_status(), led\_self\_test() \\
 			Data: Current status \\
-			Requirements see: \ref{req.2.6}, \ref{req.3.3}
+			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.11}, \ref{req.3.3}
 
 		\item Intake schedule and time control (Raspberry Pi): \\
-			Description: Manages the intake times and target weights,
-			transmits them to the ESP32 and triggers the push notification at
-			the intake time. The time is synchronised via NTP. \\
+			Description: Reads the intake schedule from a configuration file
+			maintained by the nursing staff and calculates the target weight
+			of each intake time (quantity $\times$ weight of one tablet).
+			Transmits the intake times and target weights to the ESP32 and
+			triggers the push notification at the intake time, which lists the
+			medications and their quantity. The time is synchronised via NTP. \\
 			Functions: schedule\_load(), schedule\_check\_due() \\
-			Data: Intake schedule, system time \\
-			Requirements see: \ref{req.1.1}--\ref{req.1.4}
+			Data: Configuration file (medication names, weight of one tablet,
+			intake times, quantity), calculated target weights, system time \\
+			Requirements see: \ref{req.1.1}--\ref{req.1.5}, \ref{req.1.8}--
+			\ref{req.1.10}, \ref{req.4.6}
 	\end{enumerate}
 
 \subsubsection{Security related modules}
@@ -61,17 +75,27 @@ implemented in C according to MISRA C and is divided into several threads.
 		Raspberry Pi): \\
 			Description: Establishes the connection, performs an ECDHE key
 			exchange and encrypts all messages with AES-GCM. A sequence number
-			protects against replay attacks. \\
+			protects against replay attacks. The Raspberry Pi only connects to
+			the BLE address of the ESP32 stored in its configuration file.
+			Both devices hold a common pre-shared key (PSK), which is stored
+			once during commissioning. The session key is derived from the
+			ECDHE shared secret and the PSK, so that only the two known devices
+			can communicate with each other. \\
 			Functions: bt\_send(), bt\_receive() \\
-			Data: Session key, sequence counter, message buffer \\
-			Requirements see: \ref{req.3.1}--\ref{req.3.5}, \ref{req.4.1}--\ref{req.4.3}
+			Data: Pre-shared key, BLE address of the partner, session key,
+			sequence counter, message buffer \\
+			Requirements see: \ref{req.3.1}--\ref{req.3.5}, \ref{req.4.1}--\ref{req.4.3},
+			\ref{req.4.7}--\ref{req.4.9}
 
 		\item Telegram connection (Raspberry Pi): \\
 			Description: Sends reminders and warnings via the Telegram Bot API
-			over HTTPS. \\
+			over HTTPS and verifies the server certificate. Before the first NTP
+			synchronisation, the last system time saved at shutdown is used for
+			this check. \\
 			Functions: telegram\_send() \\
-			Data: Bot token, chat ID, message text \\
-			Requirements see: \ref{req.1.2}, \ref{req.2.6}, \ref{req.3.5}, \ref{req.4.5}
+			Data: Bot token, chat ID, message text (medication names and
+			quantity) \\
+			Requirements see: \ref{req.1.2}, \ref{req.1.9}, \ref{req.1.10}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.11}, \ref{req.3.5}, \ref{req.4.5}, \ref{req.4.10}
 	\end{enumerate}
 
 \subsubsection{Modules with no influence on safety and security}
@@ -98,6 +122,9 @@ ESP-IDF with FreeRTOS (ESP32)
 		re-enable interrupts while the HX711 is being read.
 		\item ble\_gatts\_notify\_custom(conn\_handle, chr\_val\_handle, om) from
 		NimBLE sends a message to the Raspberry Pi.
+		\item nvs\_set\_blob(handle, key, value, length) and nvs\_get\_blob(handle,
+		key, out\_value, length) store and read the calibration data in the
+		non-volatile memory.
 	\end{itemize}
 
 mbedTLS (ESP32 and Raspberry Pi)
@@ -109,6 +136,9 @@ mbedTLS (ESP32 and Raspberry Pi)
 		\item mbedtls\_gcm\_auth\_decrypt(ctx, length, iv, iv\_len, add, add\_len,
 		tag, tag\_len, input, output) decrypts a message and verifies its
 		integrity.
+		\item mbedtls\_hkdf(md, salt, salt\_len, ikm, ikm\_len, info, info\_len,
+		okm, okm\_len) derives the session key from the ECDHE shared secret
+		and the pre-shared key.
 	\end{itemize}
 
 Raspberry Pi

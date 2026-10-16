@@ -12,12 +12,11 @@ gateway, which communicate with each other via encrypted Bluetooth.
 \subsection{Problem description}
 
 Many elderly people have to take several medications at fixed times every day.
-A typical example is a 71-year-old man living alone who keeps his tablets in a
-weekly pill organiser (Monday to Sunday). Simple reminders such as an alarm
+A typical example is a 71-year-old man living alone. Simple reminders such as an alarm
 clock or a push notification only ensure that the person knows that a dose is
 due. However, they do not guarantee that the dose is actually taken correctly.
 The notification may be overlooked, the dose may be forgotten despite the
-reminder, or the compartment may have been filled incorrectly.
+reminder, or the container may have been filled incorrectly.
 
 The core problem is therefore that knowing is not the same as acting
 correctly. Incorrect dosing (overdose, underdose or a missed dose) poses a
@@ -35,16 +34,48 @@ medication data are sensitive health data that must be protected accordingly.
 
 The medication dispenser extends the reminder with verified feedback. At the
 scheduled intake time, the person receives a push notification on their mobile
-phone stating which dose has to be taken (target state). The weekly pill
-organiser remains in use as a supply, but only the daily ration is monitored.
-The medication for the current day is kept in a container on a weight sensor.
-This sensor measures the change in weight when the medication is taken and
-thus verifies the action that was actually performed (actual state).
+phone stating which medications and how many tablets of each have to be
+taken (target state). The medication for the current day is
+kept in a single container on a weight sensor. Since this container holds the
+tablets for all intake times of the day, the notification tells the person
+which tablets to take from it at the current intake time.
+The weight sensor measures the change in weight when the medication is taken
+and thus verifies the action that was actually performed (actual state).
+
+The system operates in a daily cycle. Every morning, the person or the nursing
+staff fills the container with the medication for the current day and starts
+the dispenser by switching on the ESP32. At start-up, the system checks whether
+the container holds the correct amount of medication, i.e.\ whether the
+measured weight corresponds to the sum of the target weights of all intake
+times of the day. After the last intake window of the day, the dispenser
+remains inactive until it is filled and started again on the next day.
 
 The system compares the actual state with the target state and displays the
-result via an RGB LED. Green means that the correct dose was taken, blue
-indicates a deviation outside the defined tolerance and red indicates a
-critical state (overdose, underdose or missed dose).
+result via an RGB LED. In addition, the LED indicates faults of the system.
+Table~\ref{tab:led} lists all states of the LED.
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{|l|p{0.62\textwidth}|}
+		\hline
+		\textbf{LED} & \textbf{Meaning} \\
+		\hline\hline
+		Green & Correct dose taken. \\
+		\hline
+		Blue & Deviation from the target weight outside the tolerance, but smaller than the weight of one tablet (e.g.\ measurement inaccuracy). The result is uncertain. \\
+		\hline
+		Red & Critical state (overdose, underdose, missed dose or medication removed outside an intake window). \\
+		\hline
+		Red, flashing & Fault due to an incorrect filling at start-up, a sensor fault (see Hazard 2) or a missing valid schedule or time (see Hazard 3). No dose evaluation is performed. \\
+		\hline
+		Red, green, blue in sequence & LED self-test at program start. \\
+		\hline
+		Off & Between intake windows and after the last intake window of the day (no fault present). \\
+		\hline
+	\end{tabular}
+	\caption{States of the RGB LED}
+	\label{tab:led}
+\end{table}
 
 \subsection{System overview}
 
@@ -54,4 +85,8 @@ load cell via the HX711 amplifier, detects changes in weight, evaluates the
 dose taken and controls the RGB LED (KY-009). Communication with the Raspberry
 Pi takes place via Bluetooth. The Raspberry Pi 4B acts as the gateway. It
 receives the measurement results from the ESP32, synchronises the time via an
-NTP server and sends push notifications via the Telegram Bot API.
+NTP server and sends push notifications via the Telegram Bot API. The intake
+schedule is stored in a configuration file on the Raspberry Pi, which is
+maintained by the nursing staff. For each intake time, it contains the
+medications and their quantity. From this and the weight of one tablet of each
+medication, the Raspberry Pi calculates the resulting target weight.

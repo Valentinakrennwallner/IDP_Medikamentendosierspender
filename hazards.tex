@@ -43,10 +43,11 @@
 		which sends an alert via Telegram. The sensor is checked again every 10\,s. \\
 			Requirement see \ref{req.2} \\
 		\item Hazard 3: The Bluetooth connection between the ESP32 and the Raspberry Pi is not established or is lost. \\
-		If the ESP32 cannot establish a connection after three attempts (5\,s apart), it switches to autonomous mode:
-		it evaluates the intake with the last stored schedule, displays the result via the RGB LED and keeps trying to
-		reconnect in the background. If no valid schedule or time is available, no evaluation is performed and the red
-		LED flashes. The ESP32 sends a heartbeat to the Raspberry Pi every 30\,s. If no heartbeat is received for 2\,min,
+		If the ESP32 cannot establish a connection at start-up after three attempts (5\,s apart), no valid schedule or
+		time is available. In this case no evaluation is performed, the red LED flashes and the ESP32 keeps trying to
+		connect. If the connection is lost during the day, the ESP32 switches to autonomous mode: it evaluates the intake
+		with the schedule received at start-up, displays the result via the RGB LED and keeps trying to reconnect in
+		the background. The ESP32 sends a heartbeat to the Raspberry Pi every 30\,s. If no heartbeat is received for 2\,min,
 		the Raspberry Pi reports the issue via Telegram. This also detects an ESP32 without power. \\
 			Requirement see \ref{req.3} \\
 	\end{enumerate}
@@ -55,9 +56,9 @@
 
 	\begin{enumerate}
 		\item Hazard 1: Raspberry Pi does not have power. \\
-		No reminders or alerts can be sent via Telegram. The ESP32 continues in autonomous mode (see Hazard 3) as long as 
-		it has a valid schedule and time, but the person only receives feedback via the LED. A backup power supply is not 
-		part of this project.
+		No reminders or alerts can be sent via Telegram. If the Raspberry Pi fails during the day, the ESP32 continues in
+		autonomous mode (see Hazard 3) for the rest of the day, but the person only receives feedback via the LED. Without
+		the Raspberry Pi, the dispenser cannot be started on the next day. A backup power supply is not part of this project.
 		\item Hazard 2: Mobile phone is switched off. \\
 		The Telegram reminder does not reach the person, so the dose may be forgotten. The system cannot detect whether 
 		a message has been received or read.

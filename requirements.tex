@@ -32,7 +32,7 @@
 
 	\begin{enumerate}[label*=\arabic*.]
 		\item \label{req.1} Requirement: The Raspberry Pi and the ESP32 must have a consistent, valid time obtained from the NTP server via the Raspberry Pi. \\
-		Folge Requirements: \ref{req.1.1}, \ref{req.1.2}, \ref{req.1.3}, \ref{req.1.4}
+		Folge Requirements: \ref{req.1.1}, \ref{req.1.2}, \ref{req.1.3}, \ref{req.1.4}, \ref{req.1.5}, \ref{req.1.6}, \ref{req.1.7}, \ref{req.1.8}, \ref{req.1.9}, \ref{req.1.10}
 		\begin{enumerate}[label*=\arabic*.]
 			\item \label{req.1.1} Requirement: The Raspberry Pi must synchronise its time with the NTP server at start-up and every 60\,min.
 			\item \label{req.1.2} Requirement: If the synchronisation fails three times in a row (one attempt every 30\,s), the Raspberry Pi must send an
@@ -41,10 +41,16 @@
 			\item \label{req.1.3} Requirement: While operation is stopped, the Raspberry Pi must retry the synchronisation every 5\,min and resume normal
 			operation once a valid time is available.
 			\item \label{req.1.4} Requirement: The Raspberry Pi must transmit the current time to the ESP32 each time a Bluetooth connection is established.
+			\item \label{req.1.5} Requirement: The schedule transmitted to the ESP32 must contain the intake times and target weights of the current day.
+			\item \label{req.1.6} Requirement: After the last intake window of the day, the ESP32 must switch off the LED and must not perform any further evaluation until it is started again. The Bluetooth connection and the heartbeat remain active.
+			\item \label{req.1.7} Requirement: The result of an intake must be displayed on the LED until the end of the intake window. Between intake windows, the LED must be off unless a fault or an unscheduled removal is displayed.
+			\item \label{req.1.8} Requirement: At start-up, the Raspberry Pi must read the intake schedule from a configuration file. For each medication, the file contains its name and the weight of one tablet. For each intake time, it contains the medications and their quantity.
+			\item \label{req.1.9} Requirement: The Raspberry Pi must calculate the target weight of each intake time as the sum of quantity $\times$ weight of one tablet. If the configuration file is missing or invalid, the Raspberry Pi must send an alert via Telegram and must not transmit a schedule to the ESP32.
+			\item \label{req.1.10} Requirement: At each intake time, the Raspberry Pi must send a Telegram reminder listing the names and quantities of the medications to be taken.
 		\end{enumerate}
 
-		\item \label{req.2} Requirement: The HX711 sensor must provide predictable and plausible values. \\
-		Folge Requirements: \ref{req.2.1}, \ref{req.2.2}, \ref{req.2.3}, \ref{req.2.4}, \ref{req.2.5}, \ref{req.2.6}, \ref{req.2.7}
+		\item \label{req.2} Requirement: The HX711 sensor must provide predictable and plausible values and the filling of the container must be verified at start-up. \\
+		Folge Requirements: \ref{req.2.1}, \ref{req.2.2}, \ref{req.2.3}, \ref{req.2.4}, \ref{req.2.5}, \ref{req.2.6}, \ref{req.2.7}, \ref{req.2.8}, \ref{req.2.9}, \ref{req.2.10}, \ref{req.2.11}
 		\begin{enumerate}[label*=\arabic*.]
 			\item \label{req.2.1} Requirement: A measurement must be considered faulty if the HX711 does not deliver a value within 200\,ms.
 			\item \label{req.2.2} Requirement: A measurement must be considered faulty if the raw value equals the minimum or maximum of the 24-bit range
@@ -57,17 +63,20 @@
 			fault to the Raspberry Pi. The Raspberry Pi must then send an alert via Telegram.
 			\item \label{req.2.7} Requirement: During a sensor fault, the ESP32 must check the sensor again every 10\,s and resume normal operation once
 			valid values are delivered.
+			\item \label{req.2.8} Requirement: The calibration factor and the tare offset of the empty container must be determined once during commissioning using a reference weight and must be stored in the non-volatile memory of the ESP32. If no calibration data are available at start-up, the ESP32 must start the calibration via the serial interface and must not perform any evaluation.
+			\item \label{req.2.9} Requirement: At start-up, the ESP32 must check whether the measured weight corresponds to the sum of the target weights of the current day within the tolerance.
+			\item \label{req.2.10} Requirement: If the filling is incorrect, the ESP32 must let the red LED flash and report this to the Raspberry Pi, which must send an alert via Telegram. The ESP32 must repeat the check every 10\,s and start normal operation once the filling is correct.
+			\item \label{req.2.11} Requirement: Outside an intake window, a weight change that exceeds the tolerance but not 5\,g must be considered an unscheduled removal. The ESP32 must show red on the LED until the start of the next intake window and report the removal to the Raspberry Pi, which must send a warning via Telegram.
 		\end{enumerate}
 
-		\item \label{req.3} Requirement: The ESP32 must establish and maintain a Bluetooth connection to the Raspberry Pi. \\
+		\item \label{req.3} Requirement: The ESP32 and the Raspberry Pi must establish and maintain a Bluetooth connection with each other. \\
 		Folge Requirements: \ref{req.3.1}, \ref{req.3.2}, \ref{req.3.3}, \ref{req.3.4}, \ref{req.3.5}
 		\begin{enumerate}[label*=\arabic*.]
-			\item \label{req.3.1} Requirement: The ESP32 must make three attempts to establish the connection, 5\,s apart.
-			\item \label{req.3.2} Requirement: If no connection can be established, the ESP32 must switch to autonomous mode: it must evaluate the intake
-			with the last schedule stored in non-volatile memory, display the result via the RGB LED, buffer the results 
+			\item \label{req.3.1} Requirement: At start-up, the ESP32 must make three attempts to establish the connection, 5\,s apart.
+			\item \label{req.3.2} Requirement: If the connection is lost during the day, the ESP32 must switch to autonomous mode: it must evaluate the intake
+			with the schedule received at start-up, display the result via the RGB LED, buffer the results 
 			and keep trying to reconnect in the background.
-			\item \label{req.3.3} Requirement: If no valid schedule or time is available, the ESP32 must not perform any evaluation and must let the red LED
-			flash.
+			\item \label{req.3.3} Requirement: If no connection can be established at start-up, no valid schedule or time is available. In this case the ESP32 must not perform any evaluation, must let the red LED flash and must keep trying to establish the connection.
 			\item \label{req.3.4} Requirement: While connected, the ESP32 must send a heartbeat to the Raspberry Pi every 30\,s.
 			\item \label{req.3.5} Requirement: If the Raspberry Pi receives no heartbeat for 2\,min, it must send an alert via Telegram and keep trying to
 			reconnect.
@@ -78,13 +87,18 @@
 
 	\begin{enumerate}[label*=\arabic*., start=4]
 		\item \label{req.4} Requirement: The communication between the ESP32 and the Raspberry Pi as well as the output of the system must not disclose or allow manipulation of health data. \\
-		Folge Requirements: \ref{req.4.1}, \ref{req.4.2}, \ref{req.4.3}, \ref{req.4.4}, \ref{req.4.5}
+		Folge Requirements: \ref{req.4.1}, \ref{req.4.2}, \ref{req.4.3}, \ref{req.4.4}, \ref{req.4.5}, \ref{req.4.6}, \ref{req.4.7}, \ref{req.4.8}, \ref{req.4.9}, \ref{req.4.10}
 		\begin{enumerate}[label*=\arabic*.]
 			\item \label{req.4.1} Requirement: Each time a Bluetooth connection is established, the ESP32 and the Raspberry Pi must perform an ECDHE key exchange and agree on a new session key.
 			\item \label{req.4.2} Requirement: All messages between the ESP32 and the Raspberry Pi must be encrypted and authenticated with AES-GCM using the session key. Messages with an invalid authentication tag must be discarded.
 			\item \label{req.4.3} Requirement: Every message must carry a sequence number. Messages whose sequence number is not greater than that of the last accepted message must be discarded.
 			\item \label{req.4.4} Requirement: Log messages must not contain any health data (intake times, doses, weights).
 			\item \label{req.4.5} Requirement: Telegram messages must only be sent via HTTPS and must only contain the information necessary for the reminder or warning.
+			\item \label{req.4.6} Requirement: The configuration file on the Raspberry Pi (intake schedule, BLE address of the ESP32, pre-shared key) must only be readable and writable by the user account under which the software runs (file permissions 600).
+			\item \label{req.4.7} Requirement: The ESP32 and the Raspberry Pi must hold a common 256-bit pre-shared key, which is stored once during commissioning (ESP32: non-volatile memory via the serial interface, Raspberry Pi: configuration file).
+			\item \label{req.4.8} Requirement: The Raspberry Pi must only connect to the BLE address of the ESP32 stored in its configuration file. The ESP32 must only accept one connection at a time.
+			\item \label{req.4.9} Requirement: The session key must be derived from the ECDHE shared secret and the pre-shared key. If the first message after the key exchange cannot be authenticated, the connection must be terminated.
+			\item \label{req.4.10} Requirement: The Raspberry Pi must verify the server certificate of the Telegram Bot API for every HTTPS connection. Before the first NTP synchronisation, it must use the last system time saved at shutdown for this check.
 		\end{enumerate}
 	\end{enumerate}
 

@@ -30,32 +30,38 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[proc, below=of init] (led) {LED self-test (R, G, B)};
 
   % --- Bluetooth (H3) ---
-  \node[proc, below=of led] (ble) {Establish BLE connection\\(ECDHE key exchange)};
+  \node[proc, below=of led] (ble) {Establish BLE connection\\(ECDHE + PSK)};
   \node[dec, below=of ble] (d2) {Connected?};
   \node[dec, left=15mm of d2] (c2) {Attempt\\$< 3$?};
-  \node[haz, below=of c2] (h3) {\textbf{H3:} autonomous mode with last\\stored schedule (LED only),\\buffer results, reconnect in\\background (on reconnect:\\receive schedule and time)};
-  \node[dec, below=of h3] (dv) {Valid schedule\\and time?};
-  \node[haz, below=of dv] (h3c) {\textbf{H3:} no evaluation,\\red LED flashes,\\retry connection};
+  \node[haz, below=of c2] (h3c) {\textbf{H3:} no schedule and time,\\no evaluation, red LED\\flashes, retry connection};
   \node[proc, below=of d2] (rx) {Receive schedule\\and current time};
 
   % --- Sensor check at start-up (H2) ---
-  \node[proc, anchor=north] (tare) at ($(rx.south |- h3c.south)+(0,-8mm)$) {Read HX711, tare};
+  \node[proc, below=10mm of rx] (tare) {Load calibration (NVS),\\read HX711};
   \node[dec, below=of tare] (d1) {Values\\plausible?};
   \node[dec, right=15mm of d1] (c1) {Repeated\\$< 2\times$?};
   \node[haz, below=of c1] (h2a) {\textbf{H2:} no evaluation,\\red LED flashes, report fault\\to RPi, recheck every 10\,s};
 
+  % --- Filling check at start-up ---
+  \node[dec, below=24mm of d1] (dfill) {Filling\\correct?};
+  \node[proc, right=15mm of dfill, text width=44mm] (hfill) {Red LED flashes, report\\incorrect filling to RPi,\\recheck every 10\,s};
+
   % --- Main loop ---
-  \node[proc, below=24mm of d1] (meas) {Measure weight\\(periodic timer)};
+  \node[proc, below=of dfill] (meas) {Measure weight\\(periodic timer)};
   \node[dec, below=of meas] (d3) {Value\\plausible?};
   \node[dec, right=15mm of d3] (c3) {Repeated\\$< 2\times$?};
   \node[haz, below=of c3] (h2b) {\textbf{H2:} suspend evaluation,\\red LED flashes, report fault\\to RPi, recheck every 10\,s};
   \node[dec, below=of d3] (d4) {Intake window\\active?};
+  \node[dec, left=12mm of d4] (dout) {Weight\\change?};
+  \node[proc, below=of dout, text width=36mm] (hout) {LED red until\\next window, report\\unscheduled removal\\to RPi};
+  \node[dec, below=of hout] (dday) {Last window\\of day over?};
+  \node[term, below=of dday] (dend) {LED off, wait\\for restart};
   \node[dec, below=of d4] (d5) {Weight\\change?};
   \node[dec, right=15mm of d5] (d6) {Window\\expired?};
   \node[proc, below=of d5] (eval) {dose\_evaluate():\\actual vs.\ target weight};
   \node[proc, below=of d6, text width=30mm] (miss) {Status: missed dose};
   \node[proc, below=of eval] (ledset) {LED: green / blue / red};
-  \node[proc, below=of ledset] (send) {Send result to RPi\\(buffer if not connected)};
+  \node[proc, below=of ledset] (send) {Send result to RPi (if not\\connected: \textbf{H3} autonomous\\mode, buffer, reconnect)};
 
   % --- Arrows: heartbeat thread ---
   \draw[arr] (tstart) -- (thb);
@@ -69,11 +75,8 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (ble) -- (d2);
   \draw[arr] (d2) -- node[lbl, above]{no} (c2);
   \draw[arr] (c2.north) |- node[lbl, pos=0.25, left]{yes, wait 5\,s} (ble.west);
-  \draw[arr] (c2) -- node[lbl, right]{no} (h3);
-  \draw[arr] (h3) -- (dv);
-  \draw[arr] (dv) -- node[lbl, right]{no} (h3c);
+  \draw[arr] (c2) -- node[lbl, right]{no} (h3c);
   \draw[arr] (h3c.west) -- ++(-5mm,0) |- ($(led.south)!0.5!(ble.north)$);
-  \draw[arr] (dv.east) -- node[lbl, above]{yes} (dv.east -| rx.south);
   \draw[arr] (d2) -- node[lbl, right]{yes} (rx);
   \draw[arr] (rx) -- (tare);
 
@@ -83,7 +86,10 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (c1.north) |- node[lbl, pos=0.25, right]{yes, poll again} (tare.east);
   \draw[arr] (c1) -- node[lbl, right]{no} (h2a);
   \draw[arr] (h2a.east) -- ++(4mm,0) |- ($(tare.east)+(0,2mm)$);
-  \draw[arr] (d1) -- node[lbl, right]{yes} (meas);
+  \draw[arr] (d1) -- node[lbl, right]{yes} (dfill);
+  \draw[arr] (dfill) -- node[lbl, above]{no} (hfill);
+  \draw[arr] (hfill.east) -- ++(10mm,0) |- ($(tare.east)+(0,4mm)$);
+  \draw[arr] (dfill) -- node[lbl, right]{yes} (meas);
 
   % --- Arrows: main loop ---
   \draw[arr] (meas) -- (d3);
@@ -92,7 +98,11 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (c3) -- node[lbl, right]{no} (h2b);
   \draw[arr] (h2b.east) -- ++(4mm,0) |- ($(meas.east)+(0,2mm)$);
   \draw[arr] (d3) -- node[lbl, right]{yes} (d4);
-  \draw[arr] (d4.west) -- node[lbl, above]{no} ++(-10mm,0) |- (meas.west);
+  \draw[arr] (d4) -- node[lbl, above]{no} (dout);
+  \draw[arr] (dout) -- node[lbl, right]{yes} (hout);
+  \draw[arr] (hout) -- (dday);
+  \draw[arr] (dout.west) -- node[lbl, above]{no} ++(-5mm,0) |- ($(hout.south)!0.5!(dday.north)$);
+  \draw[arr] (dday) -- node[lbl, right]{yes} (dend);
   \draw[arr] (d4) -- node[lbl, right]{yes} (d5);
   \draw[arr] (d5) -- node[lbl, above]{no} (d6);
   \draw[arr] (d6.east) -- ++(18mm,0) |- node[lbl, pos=0.2, right]{no} ($(meas.east)+(0,-2.5mm)$);
@@ -101,7 +111,8 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (eval) -- (ledset);
   \draw[arr] (miss) |- (ledset);
   \draw[arr] (ledset) -- (send);
-  \draw[arr] (send.west) -- ++(-30mm,0) |- ($(meas.west)+(0,-2.5mm)$);
+  \draw[arr] (send.west) -- ++(-95mm,0) coordinate (lp) |- (meas.west);
+  \draw[arr] (dday.west) -- node[lbl, above]{no} (dday.west -| lp);
 \end{tikzpicture}
   }
   \caption{Program flowchart ESP32 (sensor node)}
@@ -137,12 +148,12 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[dec, below=of w5] (dn5) {Time\\valid?};
 
   % --- Bluetooth (H3) ---
-  \node[proc, anchor=north] (load) at ($(dn.south |- dn5.south)+(0,-8mm)$) {Load intake schedule};
-  \node[proc, below=of load] (ble) {Connect to ESP32 via BLE\\(ECDHE key exchange)};
+  \node[proc, anchor=north] (load) at ($(dn.south |- dn5.south)+(0,-8mm)$) {Load schedule from config\\file, calculate target weights};
+  \node[proc, below=of load] (ble) {Connect to stored ESP32\\via BLE (ECDHE + PSK)};
   \node[dec, below=of ble] (db) {Connected?};
   \node[dec, right=15mm of db] (cb) {No connection\\for 2\,min?};
   \node[haz, below=of cb] (h3) {\textbf{H3:} Telegram alert (once)\\``dispenser not reachable'',\\reconnect in background (on\\reconnect: send schedule\\and time), continue};
-  \node[proc, below=of db] (tx) {Send schedule and\\current time to ESP32};
+  \node[proc, below=of db] (tx) {Send today's schedule and\\current time to ESP32};
 
   % --- Main loop ---
   \node[proc, below=32mm of tx] (wait) {Wait for event\\(timer, BLE)};
@@ -151,9 +162,9 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[dec, below=of dsync] (dhb) {Heartbeat\\$\leq$ 2\,min ago?};
   \node[haz, right=15mm of dhb] (h3b) {\textbf{H3:} ESP32 without power\\or BLE lost: Telegram alert\\(once), reconnect in background};
   \node[dec, below=16mm of dhb] (ddue) {Intake time\\reached?};
-  \node[proc, right=15mm of ddue, text width=34mm] (tg) {Telegram reminder\\(target dose)};
+  \node[proc, right=15mm of ddue, text width=34mm] (tg) {Telegram reminder\\(medications and quantity)};
   \node[dec, below=of ddue] (dres) {Message from\\ESP32?};
-  \node[dec, below=of dres] (dbad) {Red / blue or\\sensor fault?};
+  \node[dec, below=of dres] (dbad) {Red / blue or\\fault reported?};
   \node[proc, right=15mm of dbad, text width=34mm] (warn) {Telegram warning};
 
   % --- Arrows: start-up and time ---

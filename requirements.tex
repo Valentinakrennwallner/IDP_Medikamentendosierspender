@@ -50,7 +50,7 @@
 		\end{enumerate}
 
 		\item \label{req.2} Requirement: The HX711 sensor must provide predictable and plausible values and the filling of the container must be verified at start-up. \\
-		Folge Requirements: \ref{req.2.1}, \ref{req.2.2}, \ref{req.2.3}, \ref{req.2.4}, \ref{req.2.5}, \ref{req.2.6}, \ref{req.2.7}, \ref{req.2.8}, \ref{req.2.9}, \ref{req.2.10}, \ref{req.2.11}
+		Folge Requirements: \ref{req.2.1}, \ref{req.2.2}, \ref{req.2.3}, \ref{req.2.4}, \ref{req.2.5}, \ref{req.2.6}, \ref{req.2.7}, \ref{req.2.8}, \ref{req.2.9}, \ref{req.2.10}, \ref{req.2.11}, \ref{req.2.12}, \ref{req.2.13}
 		\begin{enumerate}[label*=\arabic*.]
 			\item \label{req.2.1} Requirement: A measurement must be considered faulty if the HX711 does not deliver a value within 200\,ms.
 			\item \label{req.2.2} Requirement: A measurement must be considered faulty if the raw value equals the minimum or maximum of the 24-bit range
@@ -66,7 +66,9 @@
 			\item \label{req.2.8} Requirement: The calibration factor and the tare offset of the empty container must be determined once during commissioning using a reference weight and must be stored in the non-volatile memory of the ESP32. If no calibration data are available at start-up, the ESP32 must start the calibration via the serial interface and must not perform any evaluation.
 			\item \label{req.2.9} Requirement: At start-up, the ESP32 must check whether the measured weight corresponds to the sum of the target weights of the current day within the tolerance.
 			\item \label{req.2.10} Requirement: If the filling is incorrect, the ESP32 must let the red LED flash and report this to the Raspberry Pi, which must send an alert via Telegram. The ESP32 must repeat the check every 10\,s and start normal operation once the filling is correct.
-			\item \label{req.2.11} Requirement: Outside an intake window, a weight change that exceeds the tolerance but not 5\,g must be considered an unscheduled removal. The ESP32 must show red on the LED until the start of the next intake window and report the removal to the Raspberry Pi, which must send a warning via Telegram.
+			\item \label{req.2.11} Requirement: After the filling check, the ESP32 must create a table of the expected weights for the day. For each intake window and for each period between two intake windows, the table contains the start and end time as well as the expected weight before ($W_{before}$) and after ($W_{after}$) the intake. Between two intake windows, both values are identical.
+			\item \label{req.2.12} Requirement: Within an intake window, the dose must be considered taken if the measured weight corresponds to $W_{after}$ within the tolerance (LED green) and not yet taken if it corresponds to $W_{before}$. Any other weight must be considered a wrong amount (LED red, or blue if the deviation is smaller than the weight of one tablet).
+			\item \label{req.2.13} Requirement: Outside an intake window, the ESP32 must compare the measured weight with the expected weight of the table. If the deviation exceeds the tolerance (missed dose or unscheduled removal), the LED must show red. Every result must be reported to the Raspberry Pi, which must send a warning via Telegram in case of a deviation.
 		\end{enumerate}
 
 		\item \label{req.3} Requirement: The ESP32 and the Raspberry Pi must establish and maintain a Bluetooth connection with each other. \\

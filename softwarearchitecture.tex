@@ -19,7 +19,8 @@ the intake times and target weights of the current day are transmitted to the
 ESP32 via Bluetooth together with the current time at start-up; the names of the medications remain on the
 Raspberry Pi and are only used for the Telegram reminder. The
 evaluation of the intake takes place locally on the ESP32, so that the LED
-display also works when the connection is interrupted.
+display also works when the connection is interrupted. The software is
+implemented in C according to MISRA C and is divided into several threads.
 
 \subsection{Software modules}
 
@@ -39,21 +40,22 @@ display also works when the connection is interrupted.
 			Requirements see: \ref{req.2.1}--\ref{req.2.5}, \ref{req.2.7}--\ref{req.2.10}
 
 		\item Dose evaluation and intake monitoring (ESP32): \\
-			Description: Compares the weight difference during intake with the
-			target weight and determines the status. If nothing is taken within
-			a time window after the intake time, the dose is considered
-			missed. A weight change outside an intake window is reported as
-			an unscheduled removal. \\
-			Functions: dose\_evaluate(), schedule\_check() \\
-			Data: Target weight, tolerance, intake times, status \\
-			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.11}, \ref{req.3.2}, \ref{req.3.3}
+			Description: Creates a table of the expected weights for the day
+			from the schedule. In each cycle, it compares the measured weight
+			with the expected weight for the current time. Within an intake
+			window, the dose is taken when the weight after the intake is
+			reached. Outside an intake window, any deviation is detected as a
+			missed dose or an unscheduled removal. \\
+			Functions: table\_create(), dose\_evaluate() \\
+			Data: Table of expected weights, tolerance, status \\
+			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.11}--\ref{req.2.13}, \ref{req.3.2}, \ref{req.3.3}
 
 		\item LED status display (ESP32): \\
 			Description: Displays the status via the RGB LED and tests all
 			three colour channels at program start. \\
 			Functions: led\_set\_status(), led\_self\_test() \\
 			Data: Current status \\
-			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.11}, \ref{req.3.3}
+			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.12}, \ref{req.2.13}, \ref{req.3.3}
 
 		\item Intake schedule and time control (Raspberry Pi): \\
 			Description: Reads the intake schedule from a configuration file
@@ -95,7 +97,7 @@ display also works when the connection is interrupted.
 			Functions: telegram\_send() \\
 			Data: Bot token, chat ID, message text (medication names and
 			quantity) \\
-			Requirements see: \ref{req.1.2}, \ref{req.1.9}, \ref{req.1.10}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.11}, \ref{req.3.5}, \ref{req.4.5}, \ref{req.4.10}
+			Requirements see: \ref{req.1.2}, \ref{req.1.9}, \ref{req.1.10}, \ref{req.2.6}, \ref{req.2.10}, \ref{req.2.13}, \ref{req.3.5}, \ref{req.4.5}, \ref{req.4.10}
 	\end{enumerate}
 
 \subsubsection{Modules with no influence on safety and security}

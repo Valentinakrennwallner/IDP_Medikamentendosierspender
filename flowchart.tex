@@ -46,22 +46,23 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[dec, below=24mm of d1] (dfill) {Filling\\correct?};
   \node[proc, right=15mm of dfill, text width=44mm] (hfill) {Red LED flashes, report\\incorrect filling to RPi,\\recheck every 10\,s};
 
-  % --- Main loop ---
-  \node[proc, below=of dfill] (meas) {Measure weight\\(periodic timer)};
+  % --- Main loop (table of expected weights) ---
+  \node[proc, below=of dfill, text width=46mm] (table) {Create table of expected weights\\(from, to, $W_{before}$, $W_{after}$)};
+  \node[proc, below=of table] (meas) {Measure weight $W$, select\\row for current time};
   \node[dec, below=of meas] (d3) {Value\\plausible?};
   \node[dec, right=15mm of d3] (c3) {Repeated\\$< 2\times$?};
   \node[haz, below=of c3] (h2b) {\textbf{H2:} suspend evaluation,\\red LED flashes, report fault\\to RPi, recheck every 10\,s};
-  \node[dec, below=of d3] (d4) {Intake window\\active?};
-  \node[dec, left=12mm of d4] (dout) {Weight\\change?};
-  \node[proc, below=of dout, text width=36mm] (hout) {LED red until\\next window, report\\unscheduled removal\\to RPi};
-  \node[dec, below=of hout] (dday) {Last window\\of day over?};
+  \node[dec, below=of d3] (dint) {Intake\\window?};
+  \node[dec, below=of dint] (dafter) {$W \approx W_{after}$?};
+  \node[proc, right=15mm of dafter, text width=34mm, fill=green!8, draw=green!50!black] (green) {LED green\\(dose taken)};
+  \node[dec, below=of dafter] (dbefore) {$W \approx W_{before}$?};
+  \node[proc, right=15mm of dbefore, text width=34mm] (wait) {Not taken yet,\\keep waiting};
+  \node[proc, below=of dbefore, fill=red!8, draw=red!70!black] (dev) {LED red / blue\\(wrong amount)};
+  \node[dec, left=12mm of dint] (dexp) {$W \approx$ expected\\weight?};
+  \node[proc, below=of dexp, text width=36mm, fill=red!8, draw=red!70!black] (miss) {LED red (missed dose\\or unscheduled removal)};
+  \node[proc, below=of dev] (send) {Report result to RPi (if not\\connected: \textbf{H3} autonomous\\mode, buffer, reconnect)};
+  \node[dec, below=of send] (dday) {Last row\\ended?};
   \node[term, below=of dday] (dend) {LED off, wait\\for restart};
-  \node[dec, below=of d4] (d5) {Weight\\change?};
-  \node[dec, right=15mm of d5] (d6) {Window\\expired?};
-  \node[proc, below=of d5] (eval) {dose\_evaluate():\\actual vs.\ target weight};
-  \node[proc, below=of d6, text width=30mm] (miss) {Status: missed dose};
-  \node[proc, below=of eval] (ledset) {LED: green / blue / red};
-  \node[proc, below=of ledset] (send) {Send result to RPi (if not\\connected: \textbf{H3} autonomous\\mode, buffer, reconnect)};
 
   % --- Arrows: heartbeat thread ---
   \draw[arr] (tstart) -- (thb);
@@ -89,30 +90,32 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (d1) -- node[lbl, right]{yes} (dfill);
   \draw[arr] (dfill) -- node[lbl, above]{no} (hfill);
   \draw[arr] (hfill.east) -- ++(10mm,0) |- ($(tare.east)+(0,4mm)$);
-  \draw[arr] (dfill) -- node[lbl, right]{yes} (meas);
+  \draw[arr] (dfill) -- node[lbl, right]{yes} (table);
 
   % --- Arrows: main loop ---
+  \draw[arr] (table) -- (meas);
   \draw[arr] (meas) -- (d3);
   \draw[arr] (d3) -- node[lbl, above]{no} (c3);
   \draw[arr] (c3.north) |- node[lbl, pos=0.25, right]{yes, poll again} (meas.east);
   \draw[arr] (c3) -- node[lbl, right]{no} (h2b);
   \draw[arr] (h2b.east) -- ++(4mm,0) |- ($(meas.east)+(0,2mm)$);
-  \draw[arr] (d3) -- node[lbl, right]{yes} (d4);
-  \draw[arr] (d4) -- node[lbl, above]{no} (dout);
-  \draw[arr] (dout) -- node[lbl, right]{yes} (hout);
-  \draw[arr] (hout) -- (dday);
-  \draw[arr] (dout.west) -- node[lbl, above]{no} ++(-5mm,0) |- ($(hout.south)!0.5!(dday.north)$);
+  \draw[arr] (d3) -- node[lbl, right]{yes} (dint);
+  \draw[arr] (dint) -- node[lbl, right]{yes} (dafter);
+  \draw[arr] (dafter) -- node[lbl, above]{yes} (green);
+  \draw[arr] (dafter) -- node[lbl, right]{no} (dbefore);
+  \draw[arr] (dbefore) -- node[lbl, above]{yes} (wait);
+  \draw[arr] (dbefore) -- node[lbl, right]{no} (dev);
+  \draw[arr] (dint) -- node[lbl, above]{no} (dexp);
+  \draw[arr] (dexp) -- node[lbl, right]{no} (miss);
+  \draw[arr] (dev) -- (send);
+  \draw (green.east) -- ++(5mm,0) coordinate (gx);
+  \draw[arr] (gx) |- ($(send.east)+(0,2mm)$);
+  \draw[arr] (miss.south) |- (send.west);
+  \draw[arr] (wait.east) -- ++(12mm,0) |- (dday.east);
+  \draw[arr] (send) -- (dday);
   \draw[arr] (dday) -- node[lbl, right]{yes} (dend);
-  \draw[arr] (d4) -- node[lbl, right]{yes} (d5);
-  \draw[arr] (d5) -- node[lbl, above]{no} (d6);
-  \draw[arr] (d6.east) -- ++(18mm,0) |- node[lbl, pos=0.2, right]{no} ($(meas.east)+(0,-2.5mm)$);
-  \draw[arr] (d6) -- node[lbl, right]{yes} (miss);
-  \draw[arr] (d5) -- node[lbl, right]{yes} (eval);
-  \draw[arr] (eval) -- (ledset);
-  \draw[arr] (miss) |- (ledset);
-  \draw[arr] (ledset) -- (send);
-  \draw[arr] (send.west) -- ++(-95mm,0) coordinate (lp) |- (meas.west);
-  \draw[arr] (dday.west) -- node[lbl, above]{no} (dday.west -| lp);
+  \draw[arr] (dday.west) -- node[lbl, above, pos=0.85]{no} ++(-80mm,0) coordinate (lp) |- (meas.west);
+  \draw (dexp.west) -- node[lbl, above]{yes (OK)} (dexp.west -| lp);
 \end{tikzpicture}
   }
   \caption{Program flowchart ESP32 (sensor node)}

@@ -52,8 +52,9 @@
   \hl{A person or an attacker with access to the container places objects on the
   load cell or removes content in order to falsify the evaluation, or damages
   the load cell or its wiring. Such interference outside the intake window is
-  detected. A weight change that exceeds the tolerance but not 5 g is considered
-  an unscheduled removal: the LED shows red until the next intake window and the
+  detected. Outside an intake window, the measured weight is compared with the
+  expected weight from the table of expected weights. Any deviation beyond the
+  tolerance is detected as an unscheduled removal: the LED shows red and the
   Raspberry Pi sends a warning via Telegram. Larger changes are detected as part
   of Hazard 2: a weight change of more than 5 g outside an
   intake window as well as implausible values (raw value at the limit of the
@@ -61,7 +62,7 @@
   considered a faulty measurement. After two further faulty measurements, the
   ESP32 suspends the dose evaluation, the red LED flashes and the Raspberry Pi
   sends an alert via Telegram. The sensor is checked again every 10 s.}\\
-  \hl{Requirement see} \ref{req.2.4}--\ref{req.2.7}, \ref{req.2.11}
+  \hl{Requirement see} \ref{req.2.4}--\ref{req.2.7}, \ref{req.2.13}
   \item \hl{Threat 6: Connection to a foreign device (impersonation, man-in-the-middle).}\\
   \hl{The ECDHE key exchange alone protects against passive eavesdropping, but not
   against an attacker who actively intervenes while a connection is being

@@ -48,7 +48,8 @@
 		connect. If the connection is lost during the day, the ESP32 switches to autonomous mode: it evaluates the intake
 		with the schedule received at start-up, displays the result via the RGB LED and keeps trying to reconnect in
 		the background. The ESP32 sends a heartbeat to the Raspberry Pi every 30\,s. If no heartbeat is received for 2\,min,
-		the Raspberry Pi reports the issue via Telegram. This also detects an ESP32 without power. \\
+		the Raspberry Pi reports the issue via Telegram. This also detects an ESP32 without power. After the last intake
+		window, the ESP32 reports the end of the day, so that switching it off for refilling does not trigger an alert. \\
 			Requirement see \ref{req.3} \\
 	\end{enumerate}
 

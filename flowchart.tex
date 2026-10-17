@@ -1,7 +1,7 @@
 \section{Program flowchart}
 \label{chapter3}
 
-Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and Figure~\ref{fig:flow_rpi} the program flow of the Raspberry Pi gateway. Hazard handling (H1--H3, see Chapter~\ref{chapter4}) is highlighted in red.
+Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and Figure~\ref{fig:flow_rpi} the program flow of the Raspberry Pi gateway. Hazard handling (H1--H3, see Chapter~\ref{chapter4}) and critical intake results are highlighted in red.
 
 % Flowchart ESP32 (sensor node)
 
@@ -64,7 +64,8 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[dec, below=of dday] (dlast) {$W \approx W_{after}$?};
   \node[proc, right=15mm of dlast, text width=40mm, fill=red!8, draw=red!70!black] (lastmiss) {LED red, report missed\\dose to RPi};
   \node[proc, below=of dlast, text width=20mm] (lastoff) {LED off};
-  \node[term, below=of lastoff] (dend) {No evaluation,\\wait for restart};
+  \node[proc, below=of lastoff] (dayend) {Report end of day to RPi};
+  \node[term, below=of dayend] (dend) {No evaluation,\\wait for restart};
 
   % --- Arrows: heartbeat thread ---
   \draw[arr] (tstart) -- (thb);
@@ -117,8 +118,9 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (dday) -- node[lbl, right]{yes} (dlast);
   \draw[arr] (dlast) -- node[lbl, right]{yes} (lastoff);
   \draw[arr] (dlast) -- node[lbl, above]{no} (lastmiss);
-  \draw[arr] (lastoff) -- (dend);
-  \draw[arr] (lastmiss.south) |- (dend.east);
+  \draw[arr] (lastoff) -- (dayend);
+  \draw[arr] (lastmiss.south) |- (dayend.east);
+  \draw[arr] (dayend) -- (dend);
   \draw[arr] (dday.west) -- node[lbl, above, pos=0.9]{no} ++(-112mm,0) coordinate (lp) |- (meas.west);
 \end{tikzpicture}
   }
@@ -166,7 +168,7 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[proc, below=32mm of tx] (wait) {Wait for event\\(timer, BLE)};
   \node[dec, below=of wait] (dsync) {NTP re-sync\\due (60\,min)?};
   \node[proc, right=15mm of dsync, text width=34mm] (resync) {Synchronise time via NTP\\(on failure: H1)};
-  \node[dec, below=of dsync] (dhb) {Heartbeat\\$\leq$ 2\,min ago?};
+  \node[dec, below=of dsync] (dhb) {Heartbeat\\$\leq$ 2\,min ago\\or day ended?};
   \node[haz, right=15mm of dhb] (h3b) {\textbf{H3:} ESP32 without power\\or BLE lost: Telegram alert\\(once), reconnect in background};
   \node[dec, below=16mm of dhb] (ddue) {Intake time\\reached?};
   \node[proc, right=15mm of ddue, text width=34mm] (tg) {Telegram reminder\\(medications and quantity)};

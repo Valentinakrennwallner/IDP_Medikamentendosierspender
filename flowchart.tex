@@ -211,3 +211,23 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \caption{Program flowchart Raspberry Pi (gateway)}
   \label{fig:flow_rpi}
 \end{figure}
+
+For each timeslot, the expected weight before and after intake is calculated. A sample table listed in Table~\ref{tab:intake}.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l r c c r r}
+\hline
+Phase & Intake & From & To & $W_{before}$ & $W_{after}$ \\
+\hline
+Initial load   &     &       & 07:00 & 400 & 400 \\
+First intake   & 100 & 07:00 & 08:00 & 400 & 300 \\
+Outside intake &     & 08:00 & 12:00 & 300 & 300 \\
+Second intake  & 200 & 12:00 & 14:00 & 300 & 100 \\
+Outside intake &     & 14:00 & 18:00 & 100 & 100 \\
+Third intake   & 100 & 18:00 &       & 100 & 0   \\
+\hline
+\end{tabular}
+\caption{Intake phases and weight changes}
+\label{tab:intake}
+\end{table}

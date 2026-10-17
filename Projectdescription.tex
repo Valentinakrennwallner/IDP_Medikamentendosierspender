@@ -60,7 +60,7 @@ Table~\ref{tab:led} lists all states of the LED.
 		\hline
 		\textbf{LED} & \textbf{Meaning} \\
 		\hline\hline
-		Green & Correct dose taken. \\
+		Green & Correct dose taken, the remaining weight corresponds to the expected weight (also after a missed dose has been taken later). \\
 		\hline
 		Blue & Deviation from the target weight outside the tolerance, but smaller than the weight of one tablet (e.g.\ measurement inaccuracy). The result is uncertain. \\
 		\hline
@@ -70,7 +70,7 @@ Table~\ref{tab:led} lists all states of the LED.
 		\hline
 		Red, green, blue in sequence & LED self-test at program start. \\
 		\hline
-		Off & Between intake windows and after the last intake window of the day (no fault present). \\
+		Off & Within an intake window until the dose is taken and after the last intake window of the day (no fault present). \\
 		\hline
 	\end{tabular}
 	\caption{States of the RGB LED}

@@ -42,10 +42,11 @@ implemented in C according to MISRA C and is divided into several threads.
 		\item Dose evaluation and intake monitoring (ESP32): \\
 			Description: Creates a table of the expected weights for the day
 			from the schedule. In each cycle, it compares the measured weight
-			with the expected weight for the current time. Within an intake
-			window, the dose is taken when the weight after the intake is
-			reached. Outside an intake window, any deviation is detected as a
-			missed dose or an unscheduled removal. \\
+			with the expected weight after the last due intake. If it matches,
+			the dose is considered taken, also outside an intake window (late
+			intake). Otherwise, within an intake window the dose is not yet
+			taken or a wrong amount was removed. Outside an intake window, the
+			deviation is detected as a missed dose or an unscheduled removal. \\
 			Functions: table\_create(), dose\_evaluate() \\
 			Data: Table of expected weights, tolerance, status \\
 			Requirements see: \ref{req.1.6}, \ref{req.1.7}, \ref{req.2.6}, \ref{req.2.11}--\ref{req.2.13}, \ref{req.3.2}, \ref{req.3.3}

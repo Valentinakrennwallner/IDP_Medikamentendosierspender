@@ -36,8 +36,8 @@
 			Requirement see \ref{req.1} \\
 		\item Hazard 2: HX711 sensor is not delivering any values or incorrect values. \\
 		A measurement is considered faulty if the HX711 does not deliver a value within 200\,ms, the raw value is at
-		the limit of the 24-bit range (broken cable), the weight is below $-5$\,g or above 100\,g, the capacity of the load cell
-		(e.g.\ wrong orientation), or the weight changes by more than 5\,g outside an intake window
+		the limit of the 24-bit range (broken cable), the weight is below $-5$\,g or above 100\,g (capacity of the load cell,
+		e.g.\ wrong orientation), or the weight changes by more than 5\,g outside an intake window
 		(objects added or removed). In this case the sensor is polled two more times. If both measurements are also
 		faulty, the ESP32 suspends the dose evaluation, the red LED flashes and the fault is reported to the Raspberry Pi,
 		which sends an alert via Telegram. The sensor is checked again every 10\,s. \\

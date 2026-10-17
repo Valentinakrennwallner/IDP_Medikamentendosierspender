@@ -61,7 +61,10 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[proc, below=of dbefore, fill=red!8, draw=red!70!black] (dev) {LED red / blue\\(wrong amount)};
   \node[proc, below=of dev, text width=48mm] (send) {Report each new result once to\\RPi (if not connected: \textbf{H3}\\autonomous mode, buffer)};
   \node[dec, below=of send] (dday) {Last row\\ended?};
-  \node[term, below=of dday] (dend) {LED off, wait\\for restart};
+  \node[dec, below=of dday] (dlast) {$W \approx W_{after}$?};
+  \node[proc, right=15mm of dlast, text width=40mm, fill=red!8, draw=red!70!black] (lastmiss) {LED red, report missed\\dose to RPi};
+  \node[proc, below=of dlast, text width=20mm] (lastoff) {LED off};
+  \node[term, below=of lastoff] (dend) {No evaluation,\\wait for restart};
 
   % --- Arrows: heartbeat thread ---
   \draw[arr] (tstart) -- (thb);
@@ -111,7 +114,11 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (miss.south) |- (send.west);
   \draw[arr] (wait.east) -- ++(12mm,0) |- (dday.east);
   \draw[arr] (send) -- (dday);
-  \draw[arr] (dday) -- node[lbl, right]{yes} (dend);
+  \draw[arr] (dday) -- node[lbl, right]{yes} (dlast);
+  \draw[arr] (dlast) -- node[lbl, right]{yes} (lastoff);
+  \draw[arr] (dlast) -- node[lbl, above]{no} (lastmiss);
+  \draw[arr] (lastoff) -- (dend);
+  \draw[arr] (lastmiss.south) |- (dend.east);
   \draw[arr] (dday.west) -- node[lbl, above, pos=0.9]{no} ++(-112mm,0) coordinate (lp) |- (meas.west);
 \end{tikzpicture}
   }
@@ -212,22 +219,22 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \label{fig:flow_rpi}
 \end{figure}
 
-For each timeslot, the expected weight before and after intake is calculated. A sample table listed in Table~\ref{tab:intake}.
+For each timeslot, the expected weight before and after intake is calculated. A sample table listed in Table~\ref{tab:phases}.
 
-\begin{table}[htbp]
-\centering
-\begin{tabular}{l r c c r r}
-\hline
-Phase & Intake & From & To & $W_{before}$ & $W_{after}$ \\
-\hline
-Initial load   &     &       & 07:00 & 400 & 400 \\
-First intake   & 100 & 07:00 & 08:00 & 400 & 300 \\
-Outside intake &     & 08:00 & 12:00 & 300 & 300 \\
-Second intake  & 200 & 12:00 & 14:00 & 300 & 100 \\
-Outside intake &     & 14:00 & 18:00 & 100 & 100 \\
-Third intake   & 100 & 18:00 &       & 100 & 0   \\
-\hline
-\end{tabular}
-\caption{Intake phases and weight changes}
-\label{tab:intake}
+\begin{table}[H]
+	\centering
+	\begin{tabular}{lrrrrr}
+		\hline
+		Phase & Intake [mg] & From & To & $W_{before}$ [mg] & $W_{after}$ [mg] \\
+		\hline
+		Initial load   &     &       & 07:00 & 400 & 400 \\
+		First intake   & 100 & 07:00 & 08:00 & 400 & 300 \\
+		Outside intake &     & 08:00 & 12:00 & 300 & 300 \\
+		Second intake  & 200 & 12:00 & 13:00 & 300 & 100 \\
+		Outside intake &     & 13:00 & 18:00 & 100 & 100 \\
+		Third intake   & 100 & 18:00 & 19:00 & 100 &   0 \\
+		\hline
+	\end{tabular}
+	\caption{Intake phases and weight changes}
+	\label{tab:phases}
 \end{table}

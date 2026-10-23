@@ -70,9 +70,8 @@
 		The ESP32 has no feedback on whether the LED actually lights up, so a wrong or missing status display cannot be 
 		detected. The LED self-test at start-up only allows the person to check the LED visually.
 		\item Hazard 4: Wrong medication with the same total weight is taken. \\
-		The system only measures the weight removed from the container and cannot distinguish between different medications.
-		If, for example, two tablets of 10\,g each have to be taken at the first intake time and one tablet of 20\,g at a later
-		intake time, taking the 20\,g tablet at the first intake time results in the same weight and is evaluated as a correct
-		dose (LED green). The wrong medication is therefore not detected. The Telegram reminder lists the names and quantities
-		of the medications to be taken, but the correct choice remains the responsibility of the person.
+		The system only measures the weight removed from the container and cannot 
+		distinguish between different medications. If a wrong medication with the same total weight is taken, 
+		this is evaluated as a correct dose (LED green) and is therefore not detected. The Telegram reminder lists the names 
+		and quantities of the medications to be taken, but the correct choice remains the responsibility of the person.
 	\end{enumerate}

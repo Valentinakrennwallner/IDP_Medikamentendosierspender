@@ -18,6 +18,3 @@ __MACOSX/
 *.blg
 *.nav
 *.snm
-
-# Generiertes PDF (wird beim Kompilieren neu erzeugt)
-start.pdf

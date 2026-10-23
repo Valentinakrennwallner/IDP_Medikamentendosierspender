@@ -42,14 +42,19 @@ which tablets to take from it at the current intake time.
 The weight sensor measures the change in weight when the medication is taken
 and thus verifies the action that was actually performed (actual state).
 
-The system operates in a daily cycle. Every morning, the person or the nursing
-staff fills the container with the medication for the current day and starts
-the dispenser by switching on the ESP32. At start-up, the system checks whether
+The system operates in a daily cycle. Every morning, the nursing staff fills
+the container with the medication for the current day and starts the dispenser
+by pressing the reset button (EN) of the ESP32. At start-up, the system checks whether
 the container holds the correct amount of medication, i.e.\ whether the
 measured weight corresponds to the sum of the target weights of all intake
 times of the day. Each intake window starts at the intake time and lasts 1\,h.
-After the last intake window of the day, the dispenser
-remains inactive until it is filled and started again on the next day.
+At the end of the last intake window of the day, the ESP32 checks whether the
+last dose has been taken, reports the end of the day to the Raspberry Pi and
+enters deep sleep mode. In this mode, no measurements are performed and the
+Bluetooth connection is closed. If the last dose has not been taken, the red LED
+remains on during deep sleep, otherwise the LED is off. The ESP32 only wakes up
+when the reset button is pressed on the next morning, which starts a new day.
+The Raspberry Pi keeps running and waits for the next connection.
 
 The system compares the actual state with the target state and displays the
 result via an RGB LED. In addition, the LED indicates faults of the system.

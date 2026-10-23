@@ -42,9 +42,9 @@
   during the day, the ESP32 switches to autonomous mode. There it continues to
   evaluate the intake with the schedule received at start-up, displays the
   result via the RGB LED, buffers the results and keeps trying to reconnect in
-  the background (see Figure 3). The Raspberry Pi detects the disruption by the
+  the background (see Figure~\ref{fig:flow_esp32}). The Raspberry Pi detects the disruption by the
   missing heartbeat (every 30 s) and sends a one-time Telegram alert after 2 min
-  (see Figure 4). The safety function, i.e. the feedback via the LED, is
+  (see Figure~\ref{fig:flow_rpi}). The safety function, i.e. the feedback via the LED, is
   therefore maintained even when the connection is disrupted.}\\
   \hl{Requirement see} \ref{req.3.1}--\ref{req.3.5}
 
@@ -121,7 +121,7 @@
   would then be sent at the wrong time, and the ESP32 would determine the
   intake window based on the wrong time, as the Raspberry Pi transmits the
   current time to the ESP32 each time a connection is established (see
-  Requirement \ref{req.1.4} and Figure 4). The countermeasures of Hazard 1 only take effect
+  Requirement \ref{req.1.4} and Figure~\ref{fig:flow_rpi}). The countermeasures of Hazard 1 only take effect
   if no time is received, not if the time is forged. Protection, e.g. via NTS
   or several independent time sources, is not part of this project.}
 

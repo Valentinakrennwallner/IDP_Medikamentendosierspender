@@ -20,12 +20,16 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
     lbl/.style={font=\scriptsize, inner sep=1pt}
   ]
   % --- Start-up ---
-  \node[term] (start) {Start ESP32};
+  \node[term] (start) {Start ESP32\\(reset button)};
 
   % --- Heartbeat thread (runs independently, Req 3.4) ---
-  \node[term, right=28mm of start] (tstart) {Heartbeat thread};
-  \node[proc, below=of tstart] (thb) {Send heartbeat to RPi\\(if connected)};
-  \node[proc, below=of thb] (twait) {Wait 30\,s};
+  \node[term, right=40mm of start, text width=40mm] (tstart) {Heartbeat thread\\(after schedule received)};
+  \node[dec, below=10mm of tstart] (tcon) {Connected?};
+  \node[proc, below=of tcon, text width=36mm] (thb) {Send heartbeat to RPi};
+  \node[proc, below=of thb, text width=36mm] (twait) {Wait 30\,s};
+  \node[dec, below=of twait, text width=24mm] (tack) {Ack from RPi\\$\leq$ 2\,min ago?};
+  \node[haz, anchor=north west, text width=44mm] (trec) at ($(tcon.east)+(10mm,3mm)$) {\textbf{H3:} reconnect (ECDHE + PSK),\\wait 5\,s; on success: send\\buffered results, receive time};
+  \node[haz, anchor=west, text width=44mm] (tlost) at ($(tack.east)+(10mm,0)$) {\textbf{H3:} connection lost:\\disconnect, autonomous mode\\(evaluate, buffer results)};
   \node[proc, below=of start] (init) {Initialise hardware\\(GPIO, HX711, timer, threads)};
   \node[proc, below=of init] (led) {LED self-test (R, G, B)};
 
@@ -52,25 +56,32 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[dec, below=of meas] (d3) {Value\\plausible?};
   \node[dec, right=15mm of d3] (c3) {Repeated\\$< 2\times$?};
   \node[haz, below=of c3] (h2b) {\textbf{H2:} suspend evaluation,\\red LED flashes, report fault\\to RPi, recheck every 10\,s};
-  \node[dec, below=16mm of d3] (dafter) {$W \approx W_{after}$?};
+  \node[dec, below=26mm of d3] (dafter) {$W \approx W_{after}$?};
   \node[proc, right=15mm of dafter, text width=34mm, fill=green!8, draw=green!50!black] (green) {LED green\\(dose taken)};
   \node[dec, below=of dafter] (dint) {Intake\\window?};
-  \node[proc, left=12mm of dint, text width=36mm, fill=red!8, draw=red!70!black] (miss) {LED red (missed dose\\or unscheduled removal)};
+  \node[proc, left=12mm of dint, text width=40mm, fill=red!8, draw=red!70!black] (miss) {LED red (missed dose or\\unscheduled removal)};
   \node[dec, below=of dint] (dbefore) {$W \approx W_{before}$?};
   \node[proc, right=15mm of dbefore, text width=34mm] (wait) {LED off (not taken\\yet), keep waiting};
   \node[proc, below=of dbefore, fill=red!8, draw=red!70!black] (dev) {LED red / blue\\(wrong amount)};
-  \node[proc, below=of dev, text width=48mm] (send) {Report each new result once to\\RPi (if not connected: \textbf{H3}\\autonomous mode, buffer)};
+  \node[proc, below=of dev, text width=48mm] (send) {Report each new result once to\\RPi (if not connected: buffer,\\see heartbeat thread)};
   \node[dec, below=of send] (dday) {Last row\\ended?};
   \node[dec, below=of dday] (dlast) {$W \approx W_{after}$?};
   \node[proc, right=15mm of dlast, text width=40mm, fill=red!8, draw=red!70!black] (lastmiss) {LED red, report missed\\dose to RPi};
   \node[proc, below=of dlast, text width=20mm] (lastoff) {LED off};
   \node[proc, below=of lastoff] (dayend) {Report end of day to RPi};
-  \node[term, below=of dayend] (dend) {No evaluation,\\wait for restart};
+  \node[term, below=of dayend] (dend) {Deep sleep until\\reset button};
 
   % --- Arrows: heartbeat thread ---
-  \draw[arr] (tstart) -- (thb);
+  \coordinate (tin) at ($(tstart.south)!0.5!(tcon.north)$);
+  \draw[arr] (tstart) -- (tcon);
+  \draw[arr] (tcon) -- node[lbl, right]{yes} (thb);
   \draw[arr] (thb) -- (twait);
-  \draw[arr] (twait.east) -- ++(4mm,0) |- (thb.east);
+  \draw[arr] (twait) -- (tack);
+  \draw[arr] (tcon.east) -- node[lbl, above]{no} (tcon.east -| trec.west);
+  \draw[arr] (trec.north) |- (tin);
+  \draw[arr] (tack) -- node[lbl, above]{no} (tlost);
+  \draw[arr] (tlost.north) -- (tlost.north |- trec.south);
+  \draw[arr] (tack.west) -- node[lbl, above]{yes} ++(-6mm,0) |- (tin);
 
   % --- Arrows: start-up and Bluetooth ---
   \draw[arr] (start) -- (init);
@@ -138,11 +149,11 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
 \begin{tikzpicture}[
     font=\footnotesize,
     node distance=6mm and 8mm,
-    base/.style={draw, align=center, minimum height=8mm, text width=38mm},
-    term/.style={base, rounded corners=4mm, fill=gray!15, text width=28mm},
+    base/.style={draw, align=center, minimum height=8mm, text width=46mm},
+    term/.style={base, rounded corners=4mm, fill=gray!15, text width=36mm},
     proc/.style={base},
-    dec/.style={draw, diamond, aspect=2.4, align=center, inner sep=1pt, text width=20mm},
-    haz/.style={base, fill=red!8, draw=red!70!black, text width=46mm},
+    dec/.style={draw, diamond, aspect=2.4, align=center, inner sep=1pt, text width=28mm},
+    haz/.style={base, fill=red!8, draw=red!70!black, text width=52mm},
     arr/.style={-{Stealth[length=2mm]}},
     lbl/.style={font=\scriptsize, inner sep=1pt}
   ]
@@ -165,16 +176,17 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \node[proc, below=of db] (tx) {Send today's schedule and\\current time to ESP32};
 
   % --- Main loop ---
-  \node[proc, below=32mm of tx] (wait) {Wait for event\\(timer, BLE)};
+  \node[proc, anchor=north] (wait) at ($(tx.south |- h3.south)+(0,-14mm)$) {Wait for event\\(timer, BLE)};
   \node[dec, below=of wait] (dsync) {NTP re-sync\\due (60\,min)?};
-  \node[proc, right=15mm of dsync, text width=34mm] (resync) {Synchronise time via NTP\\(on failure: H1)};
+  \node[proc, right=15mm of dsync, text width=40mm] (resync) {Synchronise time\\via NTP (on failure: H1)};
   \node[dec, below=of dsync] (dhb) {Heartbeat\\$\leq$ 2\,min ago\\or day ended?};
   \node[haz, right=15mm of dhb] (h3b) {\textbf{H3:} ESP32 without power\\or BLE lost: Telegram alert\\(once), reconnect in background};
   \node[dec, below=16mm of dhb] (ddue) {Intake time\\reached?};
-  \node[proc, right=15mm of ddue, text width=34mm] (tg) {Telegram reminder\\(medications and quantity)};
+  \node[proc, right=15mm of ddue, text width=40mm] (tg) {Telegram reminder\\(medications and quantity)};
   \node[dec, below=of ddue] (dres) {Message from\\ESP32?};
-  \node[dec, below=of dres] (dbad) {Red / blue or\\fault reported?};
-  \node[proc, right=15mm of dbad, text width=34mm] (warn) {Telegram warning};
+  \node[proc, below=of dres] (ack) {If heartbeat: send\\acknowledgement to ESP32};
+  \node[dec, below=of ack] (dbad) {Red / blue or\\fault reported?};
+  \node[proc, right=15mm of dbad, text width=40mm] (warn) {Telegram warning};
 
   % --- Arrows: start-up and time ---
   \draw[arr] (start) -- (init);
@@ -195,7 +207,7 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (db) -- node[lbl, above]{no} (cb);
   \draw[arr] (cb.north) |- node[lbl, pos=0.25, right]{no, wait 5\,s} (ble.east);
   \draw[arr] (cb) -- node[lbl, right]{yes} (h3);
-  \draw[arr] (h3.south) |- ($(tx.south)!0.5!(wait.north)$);
+  \draw[arr] (h3.south) |- ($(tx.south |- h3.south)+(0,-6mm)$);
   \draw[arr] (db) -- node[lbl, right]{yes} (tx);
   \draw[arr] (tx) -- (wait);
 
@@ -210,11 +222,16 @@ Figure~\ref{fig:flow_esp32} shows the program flow of the ESP32 sensor node and 
   \draw[arr] (ddue) -- node[lbl, above]{yes} (tg);
   \draw[arr] (tg) |- (dres);
   \draw[arr] (ddue) -- node[lbl, right]{no} (dres);
-  \draw (dres.west) -- node[lbl, above]{no} ++(-14mm,0);
-  \draw[arr] (dres) -- node[lbl, right]{yes} (dbad);
+  % common loop line on the left, below the last diamond
+  \coordinate (lx) at ($(dhb.west)+(-10mm,0)$);
+  \coordinate (wy) at ($(dbad.south)+(0,-6mm)$);
+  \draw (dres.west) -- node[lbl, above]{no} (dres.west -| lx);
+  \draw[arr] (dres) -- node[lbl, right]{yes} (ack);
+  \draw[arr] (ack) -- (dbad);
   \draw[arr] (dbad) -- node[lbl, above]{yes} (warn);
-  \draw (warn.south) -- ++(0,-6mm) -| ($(dbad.west)+(-14mm,0)$);
-  \draw[arr] (dbad.west) -- node[lbl, above]{no} ++(-14mm,0) |- (wait.west);
+  \draw (dbad.west) -- node[lbl, above]{no} (dbad.west -| lx);
+  \draw (warn.south) |- (wy -| lx);
+  \draw[arr] (wy -| lx) |- (wait.west);
 \end{tikzpicture}
   }
   \caption{Program flowchart Raspberry Pi (gateway)}

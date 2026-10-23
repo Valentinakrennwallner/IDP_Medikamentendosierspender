@@ -47,9 +47,11 @@
 		time is available. In this case no evaluation is performed, the red LED flashes and the ESP32 keeps trying to
 		connect. If the connection is lost during the day, the ESP32 switches to autonomous mode: it evaluates the intake
 		with the schedule received at start-up, displays the result via the RGB LED and keeps trying to reconnect in
-		the background. The ESP32 sends a heartbeat to the Raspberry Pi every 30\,s. If no heartbeat is received for 2\,min,
-		the Raspberry Pi reports the issue via Telegram. This also detects an ESP32 without power. After the last intake
-		window, the ESP32 reports the end of the day, so that switching it off for refilling does not trigger an alert. \\
+		the background. The ESP32 sends a heartbeat to the Raspberry Pi every 30\,s, which the Raspberry Pi answers with an
+		acknowledgement. If the ESP32 receives no acknowledgement for 2\,min, it detects the loss of connection, terminates
+		the connection and switches to autonomous mode. If the Raspberry Pi receives no heartbeat for 2\,min,
+		it reports the issue via Telegram. This also detects an ESP32 without power. After the last intake
+		window, the ESP32 reports the end of the day, so that the following deep sleep does not trigger an alert. \\
 			Requirement see \ref{req.3} \\
 	\end{enumerate}
 
@@ -66,4 +68,10 @@
 		\item Hazard 3: LED mechanically or electrically damaged. \\
 		The ESP32 has no feedback on whether the LED actually lights up, so a wrong or missing status display cannot be 
 		detected. The LED self-test at start-up only allows the person to check the LED visually.
+		\item Hazard 4: Wrong medication with the same total weight is taken. \\
+		The system only measures the weight removed from the container and cannot distinguish between different medications.
+		If, for example, two tablets of 10\,g each have to be taken at the first intake time and one tablet of 20\,g at a later
+		intake time, taking the 20\,g tablet at the first intake time results in the same weight and is evaluated as a correct
+		dose (LED green). The wrong medication is therefore not detected. The Telegram reminder lists the names and quantities
+		of the medications to be taken, but the correct choice remains the responsibility of the person.
 	\end{enumerate}

@@ -29,10 +29,14 @@ typedef struct
 } time_sync_service_t;
 
 int time_sync_init(time_sync_service_t *service, const time_sync_ops_t *ops);
+int time_sync_get_current_time(const time_sync_service_t *service,
+                               int64_t *unix_time);
 
 /*
  * Perform one synchronization attempt.
- * Returns zero on success, or -1 if a required callback fails.
+ * Returns zero if the attempt was processed, or -1 on invalid input or if
+ * alert delivery fails. A processed attempt can still report unsynchronized
+ * time through the service state and retry delay.
  * next_delay_seconds receives the delay before the next attempt.
  */
 int time_sync_step(time_sync_service_t *service, uint32_t *next_delay_seconds);

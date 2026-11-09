@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Ensure the platform supplies all callbacks needed by the time service. */
 static bool time_sync_ops_are_valid(const time_sync_ops_t *ops)
 {
     return (ops != NULL) && (ops->request_sync != NULL) &&
@@ -12,6 +13,11 @@ static bool time_sync_ops_are_valid(const time_sync_ops_t *ops)
            (ops->send_unavailable_alert != NULL);
 }
 
+/*
+ * Initialize time synchronization state and its platform callbacks.
+ * Design Document, Chapter 2, Section 2.1 (intake schedule and time control)
+ * and Chapter 6, Section 6.1, Requirements 1.1–1.4.
+ */
 int time_sync_init(time_sync_service_t *service, const time_sync_ops_t *ops)
 {
     if ((service == NULL) || !time_sync_ops_are_valid(ops))
@@ -27,6 +33,34 @@ int time_sync_init(time_sync_service_t *service, const time_sync_ops_t *ops)
     return 0;
 }
 
+/*
+ * Read the current system time only while the service considers NTP valid.
+ * Design Document, Chapter 6, Section 6.1, Requirement 1.4.
+ */
+int time_sync_get_current_time(const time_sync_service_t *service,
+                               int64_t *unix_time)
+{
+    if ((service == NULL) || (unix_time == NULL) ||
+        service->operation_stopped || !service->has_last_valid_time ||
+        !time_sync_ops_are_valid(&service->ops))
+    {
+        return -1;
+    }
+
+    if ((service->ops.read_synchronized_time(service->ops.context, unix_time) != 0) ||
+        (*unix_time <= 0))
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * Run one NTP attempt and select the retry interval or stopped state.
+ * Design Document, Chapter 2, Section 2.1 (intake schedule and time control)
+ * and Chapter 6, Section 6.1, Requirements 1.1–1.3.
+ */
 int time_sync_step(time_sync_service_t *service, uint32_t *next_delay_seconds)
 {
     int64_t synchronized_time = 0;
@@ -79,12 +113,20 @@ int time_sync_step(time_sync_service_t *service, uint32_t *next_delay_seconds)
     return 0;
 }
 
+/*
+ * Restore the last valid epoch for pre-NTP TLS certificate checks.
+ * Design Document, Chapter 2, Section 2.1 (Telegram connection) and Chapter
+ * 6, Section 6.2, Requirement 4.10.
+ */
 int time_sync_load_last_valid_time(time_sync_service_t *service,
                                    const char *path)
 {
     char buffer[32];
     char *end = NULL;
     intmax_t parsed_time;
+    int trailing_character;
+    int file_error;
+    int close_result;
     FILE *file;
 
     if ((service == NULL) || (path == NULL))
@@ -113,7 +155,11 @@ int time_sync_load_last_valid_time(time_sync_service_t *service,
         return -1;
     }
 
-    if ((fclose(file) != 0) || (parsed_time > INT64_MAX))
+    trailing_character = fgetc(file);
+    file_error = ferror(file);
+    close_result = fclose(file);
+    if ((trailing_character != EOF) || (file_error != 0) ||
+        (close_result != 0) || (parsed_time > INT64_MAX))
     {
         return -1;
     }
@@ -123,6 +169,11 @@ int time_sync_load_last_valid_time(time_sync_service_t *service,
     return 0;
 }
 
+/*
+ * Persist the last valid epoch for TLS certificate checks after restart.
+ * Design Document, Chapter 2, Section 2.1 (Telegram connection) and Chapter
+ * 6, Section 6.2, Requirement 4.10.
+ */
 int time_sync_save_last_valid_time(const time_sync_service_t *service,
                                    const char *path)
 {

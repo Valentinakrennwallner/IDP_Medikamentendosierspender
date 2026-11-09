@@ -11,7 +11,9 @@ The current executable only confirms startup. Add the gateway modules below
 before connecting it to a dispenser:
 
 - `schedule`: load and validate the daily schedule and calculate target weights.
-- `time_sync`: NTP synchronization and recovery behavior.
+- `time_sync`: startup/hourly sync policy, failure recovery, and last-valid-time
+  persistence. The gateway must provide callbacks connected to the host NTP
+  service and Telegram alert delivery.
 - `ble`: BlueZ transport, heartbeats, and reconnection.
 - `secure_channel`: the gateway half of the authenticated BLE protocol.
 - `notifications`: Telegram reminders and fault alerts over verified HTTPS.

@@ -9,3 +9,6 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - add tests for misra c compliance
 - misra c check is required for both raspberry and esp32
 - document development software requirements in the README.md
+- implement time_sync according to specification
+- add code to pass schedule and current time as per flow diagram
+- add code to pass schedule information to the esp32

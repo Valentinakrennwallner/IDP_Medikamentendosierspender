@@ -12,12 +12,14 @@ typedef struct
     int64_t unix_time;
 } fake_time_backend_t;
 
+/* Simulate an NTP request for the time-sync unit tests. */
 static int fake_request_sync(void *context)
 {
     fake_time_backend_t *backend = context;
     return backend->sync_result;
 }
 
+/* Provide the fake system clock when synchronization has succeeded. */
 static int fake_read_synchronized_time(void *context, int64_t *unix_time)
 {
     fake_time_backend_t *backend = context;
@@ -31,6 +33,7 @@ static int fake_read_synchronized_time(void *context, int64_t *unix_time)
     return 0;
 }
 
+/* Count simulated Telegram alerts and return the configured result. */
 static int fake_send_unavailable_alert(void *context)
 {
     fake_time_backend_t *backend = context;
@@ -38,6 +41,7 @@ static int fake_send_unavailable_alert(void *context)
     return backend->alert_result;
 }
 
+/* Verify retries occur at 30 seconds and three failures stop operation. */
 static int test_startup_retry_and_stop(void)
 {
     fake_time_backend_t backend = {1, 0, 0, 0, 1700000000};
@@ -85,6 +89,7 @@ static int test_startup_retry_and_stop(void)
     return 0;
 }
 
+/* Verify successful retry resumes operation and schedules hourly sync. */
 static int test_recovery_and_hourly_sync(void)
 {
     fake_time_backend_t backend = {0, 0, 0, 0, 1700000100};
@@ -116,6 +121,7 @@ static int test_recovery_and_hourly_sync(void)
     return 0;
 }
 
+/* Verify an alert-delivery failure is reported by the time service. */
 static int test_alert_errors_are_reported(void)
 {
     fake_time_backend_t backend = {1, 0, 1, 0, 1700000200};
@@ -143,6 +149,7 @@ static int test_alert_errors_are_reported(void)
     return 0;
 }
 
+/* Verify the last valid epoch can be saved and loaded. */
 static int test_last_valid_time_persistence(void)
 {
     const char *path = "time_sync_last_time_test.tmp";
@@ -179,6 +186,7 @@ cleanup:
     return result;
 }
 
+/* Run the time synchronization unit tests. */
 int main(void)
 {
     if ((test_startup_retry_and_stop() != 0) ||

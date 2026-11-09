@@ -16,7 +16,8 @@ before connecting it to a dispenser:
   service and Telegram alert delivery.
 - `ble`: BlueZ transport, heartbeats, and reconnection.
 - `secure_channel`: the gateway half of the authenticated BLE protocol.
-- `notifications`: Telegram reminders and fault alerts over verified HTTPS.
+- `notifications`: Telegram reminders and fault alerts over verified HTTPS;
+  requires libcurl with its OpenSSL backend and OpenSSL development headers.
 - `logging`: status-only logs; never log medication names, doses, or weights.
 
 The sample configuration is illustrative only. Validate its schema and

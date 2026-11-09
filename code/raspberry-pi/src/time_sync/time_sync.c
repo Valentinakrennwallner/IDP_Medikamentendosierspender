@@ -28,6 +28,7 @@ int time_sync_init(time_sync_service_t *service, const time_sync_ops_t *ops)
     service->ops = *ops;
     service->consecutive_failures = 0U;
     service->operation_stopped = false;
+    service->has_synchronized_time = false;
     service->has_last_valid_time = false;
     service->last_valid_unix_time = 0;
     return 0;
@@ -41,7 +42,7 @@ int time_sync_get_current_time(const time_sync_service_t *service,
                                int64_t *unix_time)
 {
     if ((service == NULL) || (unix_time == NULL) ||
-        service->operation_stopped || !service->has_last_valid_time ||
+        service->operation_stopped || !service->has_synchronized_time ||
         !time_sync_ops_are_valid(&service->ops))
     {
         return -1;
@@ -54,6 +55,36 @@ int time_sync_get_current_time(const time_sync_service_t *service,
     }
 
     return 0;
+}
+
+/*
+ * Return the synchronized time for TLS validation, or the saved last-valid
+ * epoch before NTP becomes available. Design Document, Chapter 2, Section 2.1
+ * (Telegram connection) and Chapter 6, Section 6.2, Requirement 4.10.
+ */
+int time_sync_get_certificate_verification_time(
+    const time_sync_service_t *service,
+    int64_t *unix_time)
+{
+    int64_t current_time = 0;
+
+    if ((service == NULL) || (unix_time == NULL) ||
+        !service->has_last_valid_time || !time_sync_ops_are_valid(&service->ops))
+    {
+        return -1;
+    }
+
+    if (service->has_synchronized_time && !service->operation_stopped)
+    {
+        if (time_sync_get_current_time(service, &current_time) == 0)
+        {
+            *unix_time = current_time;
+            return 0;
+        }
+    }
+
+    *unix_time = service->last_valid_unix_time;
+    return (*unix_time > 0) ? 0 : -1;
 }
 
 /*
@@ -84,6 +115,7 @@ int time_sync_step(time_sync_service_t *service, uint32_t *next_delay_seconds)
     {
         service->consecutive_failures = 0U;
         service->operation_stopped = false;
+        service->has_synchronized_time = true;
         service->has_last_valid_time = true;
         service->last_valid_unix_time = synchronized_time;
         *next_delay_seconds = TIME_SYNC_INTERVAL_SECONDS;
@@ -104,6 +136,7 @@ int time_sync_step(time_sync_service_t *service, uint32_t *next_delay_seconds)
     }
 
     service->operation_stopped = true;
+    service->has_synchronized_time = false;
     *next_delay_seconds = TIME_SYNC_OPERATIONAL_RETRY_SECONDS;
     if (service->ops.send_unavailable_alert(service->ops.context) != 0)
     {
@@ -165,6 +198,7 @@ int time_sync_load_last_valid_time(time_sync_service_t *service,
     }
 
     service->last_valid_unix_time = (int64_t)parsed_time;
+    service->has_synchronized_time = false;
     service->has_last_valid_time = true;
     return 0;
 }

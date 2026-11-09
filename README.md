@@ -49,7 +49,7 @@ and Raspberry Pi OS.
 - Raspberry Pi OS or another supported Linux environment with a C11 compiler,
   CMake, and POSIX threads.
 - Development libraries/tools for BlueZ (including its D-Bus API), mbedTLS,
-  and libcurl with HTTPS/TLS support.
+  OpenSSL, and libcurl built with the OpenSSL TLS backend.
 - Build from the repository root:
 
   ```sh

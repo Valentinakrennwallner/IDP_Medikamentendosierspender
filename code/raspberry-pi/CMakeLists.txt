@@ -9,12 +9,15 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
+find_package(CURL REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_executable(medication_dispenser_gateway
     src/main.c
     src/ble/startup_transfer.c
     src/schedule/schedule.c
     src/time_sync/time_sync.c
+    src/notifications/telegram.c
     ../protocol/src/startup_message.c
 )
 target_include_directories(medication_dispenser_gateway PRIVATE
@@ -27,7 +30,12 @@ target_compile_options(medication_dispenser_gateway PRIVATE
     -Wpedantic
 )
 
-target_link_libraries(medication_dispenser_gateway PRIVATE Threads::Threads)
+target_link_libraries(medication_dispenser_gateway PRIVATE
+    Threads::Threads
+    CURL::libcurl
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
 
 if(BUILD_TESTING)
     add_executable(time_sync_test
@@ -58,6 +66,24 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME startup_transfer_tests COMMAND startup_transfer_test)
+
+    add_executable(telegram_test
+        test/telegram_test.c
+        src/notifications/telegram.c
+        src/time_sync/time_sync.c
+    )
+    target_compile_options(telegram_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(telegram_test PRIVATE
+        Threads::Threads
+        CURL::libcurl
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    add_test(NAME telegram_tests COMMAND telegram_test)
 
     add_test(
         NAME misra_c_screening

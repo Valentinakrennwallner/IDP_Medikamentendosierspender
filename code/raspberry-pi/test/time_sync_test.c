@@ -100,6 +100,7 @@ static int test_recovery_and_hourly_sync(void)
         &backend};
     time_sync_service_t service;
     uint32_t next_delay = 0U;
+    int64_t certificate_time = 0;
 
     if (time_sync_init(&service, &ops) != 0)
     {
@@ -112,8 +113,12 @@ static int test_recovery_and_hourly_sync(void)
     if ((time_sync_step(&service, &next_delay) != 0) ||
         (next_delay != TIME_SYNC_INTERVAL_SECONDS) ||
         service.operation_stopped || (service.consecutive_failures != 0U) ||
+        !service.has_synchronized_time ||
         !service.has_last_valid_time ||
-        (service.last_valid_unix_time != backend.unix_time))
+        (service.last_valid_unix_time != backend.unix_time) ||
+        (time_sync_get_certificate_verification_time(
+             &service, &certificate_time) != 0) ||
+        (certificate_time != backend.unix_time))
     {
         return 1;
     }
@@ -162,6 +167,7 @@ static int test_last_valid_time_persistence(void)
     time_sync_service_t service;
     time_sync_service_t restored_service;
     uint32_t next_delay = 0U;
+    int64_t certificate_time = 0;
     int result = 1;
 
     (void)remove(path);
@@ -171,7 +177,10 @@ static int test_last_valid_time_persistence(void)
         (time_sync_save_last_valid_time(&service, path) != 0) ||
         (time_sync_load_last_valid_time(&restored_service, path) != 0) ||
         !restored_service.has_last_valid_time ||
-        (restored_service.last_valid_unix_time != backend.unix_time))
+        (restored_service.last_valid_unix_time != backend.unix_time) ||
+        (time_sync_get_certificate_verification_time(
+             &restored_service, &certificate_time) != 0) ||
+        (certificate_time != backend.unix_time))
     {
         goto cleanup;
     }

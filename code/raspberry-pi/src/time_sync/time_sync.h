@@ -24,6 +24,7 @@ typedef struct
     time_sync_ops_t ops;
     uint32_t consecutive_failures;
     bool operation_stopped;
+    bool has_synchronized_time;
     bool has_last_valid_time;
     int64_t last_valid_unix_time;
 } time_sync_service_t;
@@ -31,6 +32,9 @@ typedef struct
 int time_sync_init(time_sync_service_t *service, const time_sync_ops_t *ops);
 int time_sync_get_current_time(const time_sync_service_t *service,
                                int64_t *unix_time);
+int time_sync_get_certificate_verification_time(
+    const time_sync_service_t *service,
+    int64_t *unix_time);
 
 /*
  * Perform one synchronization attempt.

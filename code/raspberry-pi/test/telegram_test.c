@@ -97,11 +97,27 @@ static int test_requires_trusted_certificate_time(void)
     return 0;
 }
 
+/* Ensure the heartbeat alert adapter reports unavailable trusted time. */
+static int test_heartbeat_alert_requires_trusted_time(void)
+{
+    telegram_heartbeat_alert_context_t context = {
+        "123:token", "12345", NULL};
+
+    if ((telegram_heartbeat_timeout_alert(NULL) == 0) ||
+        (telegram_heartbeat_timeout_alert(&context) == 0))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
 /* Run notification input and trusted-time checks without contacting Telegram. */
 int main(void)
 {
     if ((test_rejects_invalid_inputs() != 0) ||
-        (test_requires_trusted_certificate_time() != 0))
+        (test_requires_trusted_certificate_time() != 0) ||
+        (test_heartbeat_alert_requires_trusted_time() != 0))
     {
         (void)fputs("telegram tests failed\n", stderr);
         return EXIT_FAILURE;

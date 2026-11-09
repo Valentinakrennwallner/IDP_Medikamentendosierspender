@@ -15,3 +15,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - add comments to each function explaining the purpose, and if applicable reference the documentation as "Design Document" which chapter and section numbering as per the structure in start.pdf
 - add functions for setting LED states as required by the specification
 - add Telegram communication using the Telegram HTTPS API as per the specification
+- implement heartbeat logic

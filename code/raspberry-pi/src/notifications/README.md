@@ -8,6 +8,9 @@ bounded request timeout, and requires a successful Telegram API response.
 time-sync service: current NTP time when synchronized, otherwise the saved
 last-valid epoch (Design Document, Chapter 2, Section 2.1, and Chapter 6,
 Section 6.2, Requirement 4.10).
+`telegram_heartbeat_timeout_alert()` sends the minimal “Dispenser not
+reachable” notification and can be passed directly as the gateway heartbeat
+monitor's alert callback (Chapter 6, Section 6.1, Requirement 3.5).
 
 Example call:
 

@@ -455,3 +455,27 @@ telegram_result_t telegram_send_message_with_time(
 
     return telegram_send_message(bot_token, chat_id, message, verification_time);
 }
+
+/*
+ * Send the minimal dispenser-unreachable alert when the heartbeat monitor
+ * times out. Design Document, Chapter 6, Section 6.1, Requirement 3.5.
+ */
+int telegram_heartbeat_timeout_alert(void *context)
+{
+    const telegram_heartbeat_alert_context_t *alert_context = context;
+
+    if (alert_context == NULL)
+    {
+        return -1;
+    }
+
+    if (telegram_send_message_with_time(
+            alert_context->bot_token, alert_context->chat_id,
+            "Dispenser not reachable", alert_context->time_sync) !=
+        TELEGRAM_RESULT_OK)
+    {
+        return -1;
+    }
+
+    return 0;
+}

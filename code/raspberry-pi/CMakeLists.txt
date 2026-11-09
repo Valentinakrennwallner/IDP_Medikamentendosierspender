@@ -15,6 +15,7 @@ find_package(OpenSSL REQUIRED)
 add_executable(medication_dispenser_gateway
     src/main.c
     src/ble/startup_transfer.c
+    src/ble/heartbeat_monitor.c
     src/schedule/schedule.c
     src/time_sync/time_sync.c
     src/notifications/telegram.c
@@ -66,6 +67,28 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME startup_transfer_tests COMMAND startup_transfer_test)
+
+    add_executable(heartbeat_monitor_test
+        test/heartbeat_monitor_test.c
+        src/ble/heartbeat_monitor.c
+    )
+    target_compile_options(heartbeat_monitor_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME heartbeat_monitor_tests COMMAND heartbeat_monitor_test)
+
+    add_executable(heartbeat_client_test
+        test/heartbeat_client_test.c
+        ../esp32/components/ble/heartbeat_client.c
+    )
+    target_compile_options(heartbeat_client_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME heartbeat_client_tests COMMAND heartbeat_client_test)
 
     add_executable(telegram_test
         test/telegram_test.c

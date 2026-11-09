@@ -16,6 +16,13 @@ typedef enum
     TELEGRAM_RESULT_API_REJECTED
 } telegram_result_t;
 
+typedef struct
+{
+    const char *bot_token;
+    const char *chat_id;
+    const time_sync_service_t *time_sync;
+} telegram_heartbeat_alert_context_t;
+
 /*
  * Send one minimal Telegram Bot API text message over HTTPS. The supplied
  * epoch is used for certificate validity checks; use the last saved valid
@@ -32,5 +39,8 @@ telegram_result_t telegram_send_message_with_time(
     const char *chat_id,
     const char *message,
     const time_sync_service_t *time_sync);
+
+/* Adapt the dispenser-unreachable alert to the heartbeat monitor callback. */
+int telegram_heartbeat_timeout_alert(void *context);
 
 #endif

@@ -1,0 +1,26 @@
+{
+  "ble_address": "00:00:00:00:00:00",
+  "psk_hex": "REPLACE_WITH_64_HEX_CHARACTERS",
+  "telegram": {
+    "bot_token": "REPLACE_WITH_BOT_TOKEN",
+    "chat_id": "REPLACE_WITH_CHAT_ID"
+  },
+  "medications": [
+    {
+      "id": "example-tablet",
+      "name": "Example medication",
+      "tablet_weight_g": 0.25
+    }
+  ],
+  "intakes": [
+    {
+      "time": "08:00",
+      "medications": [
+        {
+          "id": "example-tablet",
+          "quantity": 1
+        }
+      ]
+    }
+  ]
+}

@@ -18,3 +18,12 @@ __MACOSX/
 *.blg
 *.nav
 *.snm
+
+# ESP-IDF build output and local configuration
+code/esp32/build/
+code/esp32/sdkconfig
+code/esp32/sdkconfig.old
+
+# Raspberry Pi build output and device secrets
+code/raspberry-pi/build/
+code/raspberry-pi/config/device.json

@@ -1,5 +1,13 @@
 # BLE module
 
+This module implements the Bluetooth communication module described in the
+Design Document, Chapter 2, Section 2.1. Its connection recovery and heartbeat
+monitoring support Chapter 6, Section 6.1, Requirements 3.1-3.5; its
+authenticated key exchange, encryption, replay protection, configured peer
+address, and shared key support Chapter 6, Section 6.2, Requirements 4.1-4.3
+and 4.7-4.9. Configuration loading and file-permission enforcement remain
+application responsibilities.
+
 `bluez_central.h` exposes the Pi's BlueZ central lifecycle. Configure the
 ESP32's canonical Bluetooth address and the 32-byte provisioned PSK in
 `ble_central_config_t`; there are no built-in credentials or partner

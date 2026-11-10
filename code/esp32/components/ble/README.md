@@ -1,5 +1,13 @@
 # BLE component
 
+This transport implements the Bluetooth communication module described in
+the Design Document, Chapter 2, Section 2.1. Its connection recovery and
+heartbeat behavior support Chapter 6, Section 6.1, Requirements 3.1-3.4;
+its authenticated key exchange, encryption, replay protection, provisioned
+key, and single-central policy support Chapter 6, Section 6.2,
+Requirements 4.1-4.3 and 4.7-4.9. Application startup, schedule evaluation,
+and key provisioning remain the responsibility of the application.
+
 The `heartbeat_client` component provides transport-independent timing for
 the ESP32 NimBLE connection lifecycle. Call `heartbeat_client_on_connected()`
 after the authenticated session is ready, pass authenticated and

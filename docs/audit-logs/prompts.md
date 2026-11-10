@@ -22,3 +22,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - remember instructions that code must follow MISRA C rules
 - remember instructions about commenting functions
 - implement key exchange and encryption
+- implement time critical weighing function

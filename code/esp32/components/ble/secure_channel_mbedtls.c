@@ -14,13 +14,18 @@
 #define CLIENT_HELLO_SIZE SECURE_CHANNEL_CLIENT_HELLO_SIZE
 #define SERVER_HELLO_SIZE SECURE_CHANNEL_SERVER_HELLO_SIZE
 #define CLIENT_FINISH_SIZE SECURE_CHANNEL_CLIENT_FINISH_SIZE
-#define TRANSCRIPT_MAX_SIZE (CLIENT_HELLO_SIZE + SERVER_HELLO_SIZE + CLIENT_FINISH_SIZE)
+#define HANDSHAKE_MAC_SIZE 32U
+#define SERVER_HELLO_BODY_SIZE (SERVER_HELLO_SIZE - HANDSHAKE_MAC_SIZE)
+#define PUBLIC_KEY_OFFSET 37U
+#define SERVER_LABEL "meddispenser-server-v1"
+#define CLIENT_LABEL "meddispenser-client-v1"
+#define LABEL_SIZE 22U
+#define TRANSCRIPT_MAX_SIZE (CLIENT_HELLO_SIZE + SERVER_HELLO_SIZE)
 #define SESSION_MAGIC UINT32_C(0x53434e31)
 
 typedef struct
 {
     uint32_t magic;
-    secure_channel_role_t role;
     bool started;
     bool established;
     uint8_t psk[SECURE_CHANNEL_PSK_SIZE];
@@ -180,13 +185,13 @@ static int derive_key(secure_channel_state_t *s)
         (mbedtls_ecdh_compute_shared(&s->group, &shared_mpi, &s->peer_public_key,
                                     &s->private_key, random_bytes, NULL) != 0))
     {
-        goto cleanup_mpi;
+        goto cleanup;
     }
 
     shared_size = (s->group.pbits + 7U) / 8U;
     if (mbedtls_mpi_write_binary(&shared_mpi, shared, shared_size) != 0)
     {
-        goto cleanup_mpi;
+        goto cleanup;
     }
 
     if ((mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
@@ -212,9 +217,6 @@ cleanup:
     mbedtls_platform_zeroize(info, sizeof(info));
     mbedtls_platform_zeroize(material, sizeof(material));
     return result;
-
-cleanup_mpi:
-    goto cleanup;
 }
 
 /*
@@ -237,7 +239,8 @@ static int make_keypair(secure_channel_state_t *s, uint8_t public_out[65])
 }
 
 /*
- * Initialize the ESP32 secure-channel role and retain its commissioned PSK.
+ * Initialize the ESP32 secure channel as the ECDHE server (the Pi is always
+ * the client) and retain its commissioned PSK.
  * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.2,
  * Requirements 4.1 and 4.7-4.9.
  */
@@ -245,8 +248,7 @@ int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
                         const uint8_t psk[SECURE_CHANNEL_PSK_SIZE])
 {
     secure_channel_state_t *s;
-    if ((channel == NULL) || (psk == NULL) ||
-        ((role != SECURE_CHANNEL_ROLE_CLIENT) && (role != SECURE_CHANNEL_ROLE_SERVER)))
+    if ((channel == NULL) || (psk == NULL) || (role != SECURE_CHANNEL_ROLE_SERVER))
     {
         return -1;
     }
@@ -258,7 +260,6 @@ int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
         return -1;
     }
     channel->backend_state = s;
-    s->role = role;
     (void)memcpy(s->psk, psk, sizeof(s->psk));
     mbedtls_ecp_group_init(&s->group);
     mbedtls_mpi_init(&s->private_key);
@@ -274,37 +275,103 @@ int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
 }
 
 /*
- * Emit the client's nonce and ephemeral P-256 public key.
+ * Authenticate the peer handshake and derive the fresh session key.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7-4.9.
+ */
+/*
+ * Compute the PSK-keyed handshake tag over label || first || second.
  * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
  */
-int secure_channel_start(secure_channel_t *channel, uint8_t *output,
-                         size_t output_capacity, size_t *output_size)
+static int handshake_mac(const secure_channel_state_t *s, const char *label,
+                         const uint8_t *first, size_t first_size,
+                         const uint8_t *second, size_t second_size,
+                         uint8_t mac[HANDSHAKE_MAC_SIZE])
 {
-    secure_channel_state_t *s;
-    if ((channel == NULL) || (output == NULL) || (output_size == NULL))
+    uint8_t data[LABEL_SIZE + TRANSCRIPT_MAX_SIZE];
+    size_t size = LABEL_SIZE + first_size + second_size;
+    int result = -1;
+
+    if (size <= sizeof(data))
+    {
+        (void)memcpy(data, label, LABEL_SIZE);
+        (void)memcpy(&data[LABEL_SIZE], first, first_size);
+        if (second_size != 0U)
+        {
+            (void)memcpy(&data[LABEL_SIZE + first_size], second, second_size);
+        }
+        result = hmac_sha256(s->psk, sizeof(s->psk), data, size, mac);
+        mbedtls_platform_zeroize(data, sizeof(data));
+    }
+    return result;
+}
+
+/* Parse and validate the peer's uncompressed P-256 public key. */
+static int read_peer_key(secure_channel_state_t *s, const uint8_t *hello)
+{
+    return ((mbedtls_ecp_point_read_binary(&s->group, &s->peer_public_key,
+                                           &hello[PUBLIC_KEY_OFFSET],
+                                           SECURE_CHANNEL_PUBLIC_KEY_SIZE) == 0) &&
+            (mbedtls_ecp_check_pubkey(&s->group, &s->peer_public_key) == 0))
+               ? 0
+               : -1;
+}
+
+/*
+ * Server: accept the ClientHello and answer with a PSK-tagged ServerHello.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static int accept_client_hello(secure_channel_state_t *s, const uint8_t *input,
+                               uint8_t *output, size_t output_capacity,
+                               size_t *output_size)
+{
+    uint8_t mac[HANDSHAKE_MAC_SIZE];
+    int result = -1;
+
+    if ((output == NULL) || (output_capacity < SERVER_HELLO_SIZE))
     {
         return -1;
     }
-    *output_size = 0U;
-    s = state_of(channel);
-    if ((s == NULL) || (s->magic != SESSION_MAGIC) ||
-        (s->role != SECURE_CHANNEL_ROLE_CLIENT) ||
-        (output_capacity < CLIENT_HELLO_SIZE) || s->started)
+    (void)memcpy(s->client_hello, input, CLIENT_HELLO_SIZE);
+    (void)memcpy(s->server_hello, "MDP1", 4U);
+    s->server_hello[4] = 2U;
+    esp_fill_random(&s->server_hello[5], SECURE_CHANNEL_NONCE_SIZE);
+    if ((read_peer_key(s, input) == 0) &&
+        (append_transcript(s, input, CLIENT_HELLO_SIZE) == 0) &&
+        (make_keypair(s, &s->server_hello[PUBLIC_KEY_OFFSET]) == 0) &&
+        (handshake_mac(s, SERVER_LABEL, s->client_hello, CLIENT_HELLO_SIZE,
+                       s->server_hello, SERVER_HELLO_BODY_SIZE, mac) == 0))
     {
-        return -1;
+        (void)memcpy(&s->server_hello[SERVER_HELLO_BODY_SIZE], mac, sizeof(mac));
+        if (append_transcript(s, s->server_hello, SERVER_HELLO_SIZE) == 0)
+        {
+            (void)memcpy(output, s->server_hello, SERVER_HELLO_SIZE);
+            *output_size = SERVER_HELLO_SIZE;
+            s->started = true;
+            result = 0;
+        }
     }
-    (void)memcpy(s->client_hello, "MDP1", 4U);
-    s->client_hello[4] = 1U;
-    esp_fill_random(&s->client_hello[5], SECURE_CHANNEL_NONCE_SIZE);
-    if (make_keypair(s, &s->client_hello[37]) != 0 ||
-        append_transcript(s, s->client_hello, sizeof(s->client_hello)) != 0)
+    mbedtls_platform_zeroize(mac, sizeof(mac));
+    return result;
+}
+
+/*
+ * Server: verify the ClientFinish tag and derive the session key.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.7 and 4.9.
+ */
+static int accept_client_finish(secure_channel_state_t *s, const uint8_t *input)
+{
+    uint8_t mac[HANDSHAKE_MAC_SIZE];
+    int result = -1;
+
+    if ((handshake_mac(s, CLIENT_LABEL, s->transcript, s->transcript_size, NULL,
+                       0U, mac) == 0) &&
+        constant_time_equal(mac, &input[5], sizeof(mac)) &&
+        (derive_key(s) == 0))
     {
-        return -1;
+        result = 0;
     }
-    (void)memcpy(output, s->client_hello, sizeof(s->client_hello));
-    *output_size = sizeof(s->client_hello);
-    s->started = true;
-    return 0;
+    mbedtls_platform_zeroize(mac, sizeof(mac));
+    return result;
 }
 
 /*
@@ -317,9 +384,6 @@ int secure_channel_process_handshake(secure_channel_t *channel,
                                      size_t *output_size, bool *established)
 {
     secure_channel_state_t *s;
-    uint8_t data[CLIENT_HELLO_SIZE + SERVER_HELLO_SIZE + 32U];
-    uint8_t mac[32];
-    size_t data_size;
     int result = -1;
 
     if ((channel == NULL) || (input == NULL) ||
@@ -337,122 +401,16 @@ int secure_channel_process_handshake(secure_channel_t *channel,
         return -1;
     }
 
-    if ((s->role == SECURE_CHANNEL_ROLE_SERVER) && (input_size == CLIENT_HELLO_SIZE) &&
-        (input[4] == 1U) && !s->started)
+    if ((input_size == CLIENT_HELLO_SIZE) && (input[4] == 1U) && !s->started)
     {
-        if ((output == NULL) || (output_capacity < SERVER_HELLO_SIZE))
-        {
-            return -1;
-        }
-        (void)memcpy(s->client_hello, input, input_size);
-        if ((mbedtls_ecp_point_read_binary(&s->group, &s->peer_public_key, &input[37], 65U) != 0) ||
-            (mbedtls_ecp_check_pubkey(&s->group, &s->peer_public_key) != 0))
-        {
-            return -1;
-        }
-        if (append_transcript(s, input, input_size) != 0)
-        {
-            return -1;
-        }
-        (void)memcpy(s->server_hello, "MDP1", 4U);
-        s->server_hello[4] = 2U;
-        esp_fill_random(&s->server_hello[5], SECURE_CHANNEL_NONCE_SIZE);
-        if (make_keypair(s, &s->server_hello[37]) != 0)
-        {
-            return -1;
-        }
-        data_size = 0U;
-        (void)memcpy(&data[data_size], "meddispenser-server-v1", 22U);
-        data_size += 22U;
-        (void)memcpy(&data[data_size], s->client_hello, sizeof(s->client_hello));
-        data_size += sizeof(s->client_hello);
-        (void)memcpy(&data[data_size], s->server_hello, 102U);
-        data_size += 102U;
-        if (hmac_sha256(s->psk, sizeof(s->psk), data, data_size, mac) != 0)
-        {
-            goto cleanup;
-        }
-        (void)memcpy(&s->server_hello[102], mac, sizeof(mac));
-        (void)memcpy(output, s->server_hello, sizeof(s->server_hello));
-        *output_size = sizeof(s->server_hello);
-        if (append_transcript(s, s->server_hello, sizeof(s->server_hello)) != 0)
-        {
-            goto cleanup;
-        }
-        s->started = true;
-        result = 0;
+        result = accept_client_hello(s, input, output, output_capacity, output_size);
     }
-    else if ((s->role == SECURE_CHANNEL_ROLE_CLIENT) && (input_size == SERVER_HELLO_SIZE) &&
-             (input[4] == 2U) && s->started)
+    else if ((input_size == CLIENT_FINISH_SIZE) && (input[4] == 3U) && s->started)
     {
-        if ((output == NULL) || (output_capacity < CLIENT_FINISH_SIZE))
-        {
-            return -1;
-        }
-        (void)memcpy(s->server_hello, input, input_size);
-        if ((mbedtls_ecp_point_read_binary(&s->group, &s->peer_public_key,
-                                          &input[37], 65U) != 0) ||
-            (mbedtls_ecp_check_pubkey(&s->group, &s->peer_public_key) != 0))
-        {
-            return -1;
-        }
-        data_size = 0U;
-        (void)memcpy(&data[data_size], "meddispenser-server-v1", 22U);
-        data_size += 22U;
-        (void)memcpy(&data[data_size], s->client_hello, sizeof(s->client_hello));
-        data_size += sizeof(s->client_hello);
-        (void)memcpy(&data[data_size], input, 102U);
-        data_size += 102U;
-        if ((hmac_sha256(s->psk, sizeof(s->psk), data, data_size, mac) != 0) ||
-            !constant_time_equal(mac, &input[102], 32U))
-        {
-            goto cleanup;
-        }
-        if (append_transcript(s, input, input_size) != 0)
-        {
-            goto cleanup;
-        }
-        data_size = 0U;
-        (void)memcpy(&data[data_size], "meddispenser-client-v1", 22U);
-        data_size += 22U;
-        (void)memcpy(&data[data_size], s->transcript, s->transcript_size);
-        data_size += s->transcript_size;
-        if (hmac_sha256(s->psk, sizeof(s->psk), data, data_size, mac) != 0)
-        {
-            goto cleanup;
-        }
-        (void)memcpy(output, "MDP1", 4U);
-        output[4] = 3U;
-        (void)memcpy(&output[5], mac, 32U);
-        *output_size = CLIENT_FINISH_SIZE;
-        if (derive_key(s) != 0)
-        {
-            goto cleanup;
-        }
-        *established = true;
-        result = 0;
-    }
-    else if ((s->role == SECURE_CHANNEL_ROLE_SERVER) && (input_size == CLIENT_FINISH_SIZE) &&
-             (input[4] == 3U) && s->started)
-    {
-        data_size = 0U;
-        (void)memcpy(&data[data_size], "meddispenser-client-v1", 22U);
-        data_size += 22U;
-        (void)memcpy(&data[data_size], s->transcript, s->transcript_size);
-        data_size += s->transcript_size;
-        if ((hmac_sha256(s->psk, sizeof(s->psk), data, data_size, mac) != 0) ||
-            !constant_time_equal(mac, &input[5], 32U) ||
-            (derive_key(s) != 0))
-        {
-            goto cleanup;
-        }
-        *established = true;
-        result = 0;
+        result = accept_client_finish(s, input);
     }
 
-cleanup:
-    mbedtls_platform_zeroize(data, sizeof(data));
-    mbedtls_platform_zeroize(mac, sizeof(mac));
+    *established = (result == 0) && s->established;
     return result;
 }
 
@@ -497,8 +455,7 @@ int secure_channel_seal(secure_channel_t *channel,
         (void)memcpy(&output[SECURE_CHANNEL_HEADER_SIZE], plaintext, plaintext_size);
     }
     input_data = (plaintext_size == 0U) ? &empty : plaintext;
-    (void)memcpy(nonce, (s->role == SECURE_CHANNEL_ROLE_CLIENT) ?
-                 s->client_prefix : s->server_prefix, 4U);
+    (void)memcpy(nonce, s->server_prefix, 4U);
     put_u64(&nonce[4], s->send_sequence);
     mbedtls_gcm_init(&gcm);
     if ((mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, s->key, 256U) == 0) &&
@@ -573,8 +530,7 @@ int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t 
         s->established = false;
         return -1;
     }
-    (void)memcpy(nonce, (s->role == SECURE_CHANNEL_ROLE_CLIENT) ?
-                 s->server_prefix : s->client_prefix, 4U);
+    (void)memcpy(nonce, s->client_prefix, 4U);
     put_u64(&nonce[4], sequence);
     output_data = (payload_size == 0U) ? &empty : plaintext;
     mbedtls_gcm_init(&gcm);

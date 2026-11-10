@@ -25,8 +25,6 @@ typedef struct
 } startup_daily_schedule_t;
 
 bool startup_schedule_is_valid(const startup_daily_schedule_t *schedule);
-bool startup_message_size(const startup_daily_schedule_t *schedule,
-                          size_t *message_size);
 int startup_message_encode(const startup_daily_schedule_t *schedule,
                            int64_t current_unix_time,
                            uint8_t *output,

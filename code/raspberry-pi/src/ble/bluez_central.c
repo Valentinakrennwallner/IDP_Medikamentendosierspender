@@ -24,6 +24,8 @@
 #define BLE_FRAGMENT_TIMEOUT_MS UINT64_C(5000)
 #define BLE_HANDSHAKE_TIMEOUT_MS UINT64_C(15000)
 #define BLE_CONNECT_RETRY_MS UINT64_C(5000)
+#define BLE_MONITOR_TICK_MS UINT64_C(1000)
+#define BLE_GATT_RESOLVE_POLLS 150U
 #define BLE_PACKET_QUEUE_SIZE 16U
 #define BLE_SEND_QUEUE_SIZE 8U
 #define BLE_MAX_FRAGMENTS \
@@ -89,8 +91,10 @@ struct ble_central
     ble_send_request_t *send_tail;
     size_t send_count;
     bool fatal_error;
+    uint64_t monitor_tick_due_ms;
 };
 
+/* Return the CLOCK_MONOTONIC time in milliseconds, or 0 on failure. */
 static uint64_t ble_monotonic_ms(void)
 {
     struct timespec time_value;
@@ -104,6 +108,7 @@ static uint64_t ble_monotonic_ms(void)
            ((uint64_t)time_value.tv_nsec / UINT64_C(1000000));
 }
 
+/* Report whether stop or destroy has been requested. */
 static bool ble_should_stop(ble_central_t *central)
 {
     bool should_stop;
@@ -114,6 +119,7 @@ static bool ble_should_stop(ble_central_t *central)
     return should_stop;
 }
 
+/* Deliver a connection or error event to the application, if registered. */
 static void ble_emit_event(ble_central_t *central,
                            ble_central_event_t event,
                            const char *detail)
@@ -124,6 +130,10 @@ static void ble_emit_event(ble_central_t *central,
     }
 }
 
+/*
+ * Publish whether the PSK-authenticated session is usable and wake waiting
+ * senders. Design Document, Chapter 6, Section 6.2, Requirement 4.9.
+ */
 static int ble_set_authenticated(ble_central_t *central, bool authenticated)
 {
     int result = pthread_mutex_lock(&central->mutex);
@@ -138,6 +148,10 @@ static int ble_set_authenticated(ble_central_t *central, bool authenticated)
     return 0;
 }
 
+/*
+ * Accept only a canonical XX:XX:XX:XX:XX:XX Bluetooth address.
+ * Design Document, Chapter 6, Section 6.2, Requirement 4.8.
+ */
 static bool ble_address_is_valid(const char *address)
 {
     size_t index;
@@ -166,16 +180,7 @@ static bool ble_address_is_valid(const char *address)
     return true;
 }
 
-static bool ble_known_message_type(secure_channel_message_type_t type)
-{
-    return (type == SECURE_CHANNEL_MESSAGE_STARTUP) ||
-           (type == SECURE_CHANNEL_MESSAGE_HEARTBEAT) ||
-           (type == SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT) ||
-           (type == SECURE_CHANNEL_MESSAGE_RESULT) ||
-           (type == SECURE_CHANNEL_MESSAGE_DAY_END) ||
-           (type == SECURE_CHANNEL_MESSAGE_FAULT);
-}
-
+/* Call a BlueZ D-Bus method without arguments; returns the reply or NULL. */
 static DBusMessage *ble_call_method(ble_central_t *central,
                                     const char *path,
                                     const char *interface,
@@ -202,6 +207,7 @@ static DBusMessage *ble_call_method(ble_central_t *central,
     return reply;
 }
 
+/* Call a BlueZ method without arguments and report success as zero. */
 static int ble_call_no_arguments(ble_central_t *central,
                                  const char *path,
                                  const char *interface,
@@ -220,6 +226,7 @@ static int ble_call_no_arguments(ble_central_t *central,
     return result;
 }
 
+/* Look up a property of the expected D-Bus type in an a{sv} dictionary. */
 static bool ble_dict_get(DBusMessageIter *dictionary,
                          const char *name,
                          int expected_type,
@@ -263,6 +270,7 @@ static bool ble_dict_get(DBusMessageIter *dictionary,
     return false;
 }
 
+/* Report whether an a{sv} dictionary contains a property, of any type. */
 static bool ble_dict_contains(DBusMessageIter *dictionary, const char *name)
 {
     DBusMessageIter entries;
@@ -291,6 +299,7 @@ static bool ble_dict_contains(DBusMessageIter *dictionary, const char *name)
     return false;
 }
 
+/* Find one interface's property dictionary in a managed-object entry. */
 static bool ble_find_interface(DBusMessageIter *interfaces,
                                const char *name,
                                DBusMessageIter *properties)
@@ -326,6 +335,7 @@ static bool ble_find_interface(DBusMessageIter *interfaces,
     return false;
 }
 
+/* Fetch all BlueZ objects through the ObjectManager interface. */
 static DBusMessage *ble_get_managed_objects(ble_central_t *central)
 {
     return ble_call_method(central, "/",
@@ -333,6 +343,10 @@ static DBusMessage *ble_get_managed_objects(ble_central_t *central)
                            "GetManagedObjects");
 }
 
+/*
+ * Find the device whose address exactly matches the configured address.
+ * Design Document, Chapter 6, Section 6.2, Requirement 4.8.
+ */
 static bool ble_find_device(DBusMessage *objects,
                             const char *wanted_address,
                             char *device_path,
@@ -351,7 +365,6 @@ static bool ble_find_device(DBusMessage *objects,
     while (dbus_message_iter_get_arg_type(&entries) == DBUS_TYPE_DICT_ENTRY)
     {
         DBusMessageIter entry;
-        DBusMessageIter object_path_iter;
         DBusMessageIter interfaces;
         DBusMessageIter properties;
         DBusMessageIter value;
@@ -362,8 +375,7 @@ static bool ble_find_device(DBusMessage *objects,
         dbus_message_iter_recurse(&entries, &entry);
         dbus_message_iter_get_basic(&entry, &path);
         dbus_message_iter_next(&entry);
-        object_path_iter = entry;
-        interfaces = object_path_iter;
+        interfaces = entry;
         if (ble_find_interface(&interfaces, BLUEZ_DEVICE, &properties) &&
             ble_dict_get(&properties, "Address", DBUS_TYPE_STRING, &value))
         {
@@ -387,6 +399,7 @@ static bool ble_find_device(DBusMessage *objects,
     return false;
 }
 
+/* Find a GATT object by UUID below the expected parent object. */
 static bool ble_find_gatt_path(DBusMessage *objects,
                                const char *interface_name,
                                const char *uuid_property,
@@ -443,10 +456,141 @@ static bool ble_find_gatt_path(DBusMessage *objects,
     return false;
 }
 
+/* Invoke the application's dispatcher-unreachable alert. */
+static int ble_heartbeat_alert(void *context)
+{
+    ble_central_t *central = context;
+
+    return central->on_heartbeat_timeout(central->callback_context);
+}
+
+/* Close an authenticated session when the monitor requests a reconnect. */
+static int ble_reconnect_requested(void *context)
+{
+    ble_central_t *central = context;
+
+    if (central->authenticated)
+    {
+        central->fatal_error = true;
+    }
+
+    return 0;
+}
+
+/*
+ * Run the two-minute heartbeat check and the five-second reconnect request.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.5.
+ */
+static void ble_tick_heartbeat_monitor(ble_central_t *central)
+{
+    if (heartbeat_monitor_tick(
+            &central->heartbeat_monitor, ble_monotonic_ms(),
+            ble_heartbeat_alert, ble_reconnect_requested, central) != 0)
+    {
+        ble_emit_event(central, BLE_CENTRAL_EVENT_ERROR,
+                       "heartbeat monitor callback failed");
+    }
+}
+
+/*
+ * Run the heartbeat check once per second.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.5.
+ */
+static void ble_monitor_if_due(ble_central_t *central)
+{
+    uint64_t now = ble_monotonic_ms();
+
+    if (now >= central->monitor_tick_due_ms)
+    {
+        ble_tick_heartbeat_monitor(central);
+        central->monitor_tick_due_ms = now + BLE_MONITOR_TICK_MS;
+    }
+}
+
+/*
+ * Service D-Bus traffic for up to wait_ms, then run the due heartbeat check
+ * so alerts continue while no session is active.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.5.
+ */
+static void ble_wait_and_monitor(ble_central_t *central, int wait_ms)
+{
+    (void)dbus_connection_read_write_dispatch(central->bus, wait_ms);
+    ble_monitor_if_due(central);
+}
+
+/* Stop BlueZ scanning; a failure here leaves nothing to recover. */
+static void ble_stop_discovery(ble_central_t *central)
+{
+    (void)ble_call_no_arguments(central, central->adapter_path, BLUEZ_ADAPTER,
+                                "StopDiscovery");
+}
+
+/* Disconnect from the configured device and forget its object path. */
+static void ble_disconnect_device(ble_central_t *central)
+{
+    if (central->device_path[0] != '\0')
+    {
+        (void)ble_call_no_arguments(central, central->device_path,
+                                    BLUEZ_DEVICE, "Disconnect");
+        central->device_path[0] = '\0';
+    }
+}
+
+/* Locate the shared message characteristic below the shared service. */
+static bool ble_find_message_characteristic(ble_central_t *central,
+                                            DBusMessage *objects)
+{
+    char service_path[BLUEZ_MAX_GATT_PATH];
+
+    return ble_find_gatt_path(objects, BLUEZ_SERVICE, "UUID",
+                              MEDDISP_BLE_SERVICE_UUID, "Device",
+                              central->device_path, service_path,
+                              sizeof(service_path)) &&
+           ble_find_gatt_path(objects, BLUEZ_CHARACTERISTIC, "UUID",
+                              MEDDISP_BLE_MESSAGE_UUID, "Service",
+                              service_path, central->characteristic_path,
+                              sizeof(central->characteristic_path));
+}
+
+/* Wait up to 15 s for BlueZ to resolve the device's GATT database. */
+static int ble_wait_for_gatt(ble_central_t *central)
+{
+    unsigned int attempt;
+
+    for (attempt = 0U; attempt < BLE_GATT_RESOLVE_POLLS; attempt++)
+    {
+        DBusMessage *objects = ble_get_managed_objects(central);
+        char device_path[BLUEZ_MAX_GATT_PATH];
+        bool resolved = false;
+        bool ready;
+
+        if (objects == NULL)
+        {
+            return -1;
+        }
+        ready = ble_find_device(objects, central->device_address, device_path,
+                                sizeof(device_path), &resolved) &&
+                resolved && ble_find_message_characteristic(central, objects);
+        dbus_message_unref(objects);
+        if (ready)
+        {
+            return 0;
+        }
+        ble_wait_and_monitor(central, 100);
+        if (ble_should_stop(central))
+        {
+            break;
+        }
+    }
+    return -1;
+}
+
+/*
+ * Scan for the exact configured address, connect, and find the shared GATT
+ * characteristic. Design Document, Chapter 6, Section 6.2, Requirement 4.8.
+ */
 static int ble_start_discovery(ble_central_t *central)
 {
-    uint64_t next_tick = ble_monotonic_ms();
-
     if (ble_call_no_arguments(central, central->adapter_path, BLUEZ_ADAPTER,
                               "StartDiscovery") != 0)
     {
@@ -456,93 +600,40 @@ static int ble_start_discovery(ble_central_t *central)
     {
         DBusMessage *objects = ble_get_managed_objects(central);
         bool resolved = false;
-        char device_path[BLUEZ_MAX_GATT_PATH];
+        bool found;
 
         if (objects == NULL)
         {
-            (void)ble_call_no_arguments(central, central->adapter_path,
-                                        BLUEZ_ADAPTER, "StopDiscovery");
-            return -1;
+            break;
         }
-        if (ble_find_device(objects, central->device_address, device_path,
-                            sizeof(device_path), &resolved))
+        found = ble_find_device(objects, central->device_address,
+                                central->device_path,
+                                sizeof(central->device_path), &resolved);
+        dbus_message_unref(objects);
+        if (found)
         {
-            (void)snprintf(central->device_path,
-                           sizeof(central->device_path), "%s", device_path);
-            dbus_message_unref(objects);
-            (void)ble_call_no_arguments(central, central->adapter_path,
-                                        BLUEZ_ADAPTER, "StopDiscovery");
-            if (ble_call_no_arguments(central, device_path, BLUEZ_DEVICE,
-                                      "Connect") != 0)
+            ble_stop_discovery(central);
+            if (ble_call_no_arguments(central, central->device_path,
+                                      BLUEZ_DEVICE, "Connect") != 0)
             {
                 return -1;
             }
-            for (unsigned int attempt = 0U; attempt < 150U; attempt++)
-            {
-                objects = ble_get_managed_objects(central);
-                if (objects == NULL)
-                {
-                    return -1;
-                }
-                if (ble_find_device(objects, central->device_address,
-                                    device_path, sizeof(device_path),
-                                    &resolved) &&
-                    resolved)
-                {
-                    bool found_service = ble_find_gatt_path(
-                        objects, BLUEZ_SERVICE, "UUID",
-                        MEDDISP_BLE_SERVICE_UUID, "Device", device_path,
-                        central->characteristic_path,
-                        sizeof(central->characteristic_path));
-                    char service_path[BLUEZ_MAX_GATT_PATH];
-                    if (found_service)
-                    {
-                        (void)snprintf(service_path, sizeof(service_path), "%s",
-                                       central->characteristic_path);
-                        if (ble_find_gatt_path(
-                                objects, BLUEZ_CHARACTERISTIC, "UUID",
-                                MEDDISP_BLE_MESSAGE_UUID, "Service",
-                                service_path, central->characteristic_path,
-                                sizeof(central->characteristic_path)))
-                        {
-                            dbus_message_unref(objects);
-                            return 0;
-                        }
-                    }
-                }
-                dbus_message_unref(objects);
-                (void)dbus_connection_read_write_dispatch(central->bus, 100);
-                if (ble_monotonic_ms() >= next_tick)
-                {
-                    ble_tick_heartbeat_monitor(central);
-                    next_tick = ble_monotonic_ms() + UINT64_C(1000);
-                }
-                if (ble_should_stop(central))
-                {
-                    break;
-                }
-            }
-            return -1;
+            return ble_wait_for_gatt(central);
         }
-        dbus_message_unref(objects);
-        (void)dbus_connection_read_write_dispatch(central->bus, 250);
-        if (ble_monotonic_ms() >= next_tick)
-        {
-            ble_tick_heartbeat_monitor(central);
-            next_tick = ble_monotonic_ms() + UINT64_C(1000);
-        }
+        ble_wait_and_monitor(central, 250);
     }
-    (void)ble_call_no_arguments(central, central->adapter_path, BLUEZ_ADAPTER,
-                                "StopDiscovery");
+    ble_stop_discovery(central);
     return -1;
 }
 
+/* Enable notifications so ESP32 messages arrive as property changes. */
 static int ble_start_notify(ble_central_t *central)
 {
     return ble_call_no_arguments(central, central->characteristic_path,
                                  BLUEZ_CHARACTERISTIC, "StartNotify");
 }
 
+/* Write one GATT value (a handshake message or one fragment) as a write request. */
 static int ble_write_fragment(ble_central_t *central,
                               const uint8_t *fragment,
                               size_t fragment_size)
@@ -627,6 +718,10 @@ cleanup:
     return result;
 }
 
+/*
+ * Split a handshake or protected message into ordered GATT fragments and
+ * write them. Design Document, Chapter 2, Section 2.2 (BlueZ WriteValue).
+ */
 static int ble_send_wire_message(ble_central_t *central,
                                  const uint8_t *message,
                                  size_t message_size)
@@ -679,6 +774,7 @@ static int ble_send_wire_message(ble_central_t *central,
     return 0;
 }
 
+/* Queue one received GATT value for the worker thread; false when full. */
 static bool ble_queue_packet(ble_central_t *central,
                              const uint8_t *bytes,
                              size_t size)
@@ -699,6 +795,10 @@ static bool ble_queue_packet(ble_central_t *central,
     return true;
 }
 
+/*
+ * Receive ESP32 notifications (characteristic Value changes) from BlueZ.
+ * Design Document, Chapter 2, Section 2.2 (BlueZ StartNotify).
+ */
 static DBusHandlerResult ble_dbus_filter(DBusConnection *connection,
                                          DBusMessage *message,
                                          void *user_data)
@@ -706,7 +806,6 @@ static DBusHandlerResult ble_dbus_filter(DBusConnection *connection,
     ble_central_t *central = user_data;
     DBusMessageIter arguments;
     DBusMessageIter changed;
-    DBusMessageIter value;
     DBusMessageIter bytes;
     const char *interface_name = NULL;
     const char *path = dbus_message_get_path(message);
@@ -757,6 +856,10 @@ static DBusHandlerResult ble_dbus_filter(DBusConnection *connection,
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
+/*
+ * Encrypt one message with the session key and send it as GATT fragments.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
 static int ble_secure_send(ble_central_t *central,
                            secure_channel_message_type_t message_type,
                            const uint8_t *payload,
@@ -774,131 +877,120 @@ static int ble_secure_send(ble_central_t *central,
     return ble_send_wire_message(central, frame, frame_size);
 }
 
+/*
+ * Answer an authenticated heartbeat with an acknowledgement.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.4.
+ */
 static int ble_heartbeat_acknowledge(void *context)
 {
     return ble_secure_send(context, SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT,
                            NULL, 0U);
 }
 
-static int ble_heartbeat_alert(void *context)
-{
-    ble_central_t *central = context;
-
-    return (central->on_heartbeat_timeout == NULL)
-               ? -1
-               : central->on_heartbeat_timeout(central->callback_context);
-}
-
-static int ble_reconnect_requested(void *context)
-{
-    ble_central_t *central = context;
-
-    if (central->authenticated)
-    {
-        central->fatal_error = true;
-    }
-
-    return 0;
-}
-
-static void ble_tick_heartbeat_monitor(ble_central_t *central)
-{
-    if (heartbeat_monitor_tick(
-            &central->heartbeat_monitor, ble_monotonic_ms(),
-            ble_heartbeat_alert, ble_reconnect_requested, central) != 0)
-    {
-        ble_emit_event(central, BLE_CENTRAL_EVENT_ERROR,
-                       "heartbeat monitor callback failed");
-    }
-}
-
-static int ble_process_wire_message(ble_central_t *central,
-                                    const uint8_t *message,
-                                    size_t message_size)
+/*
+ * Advance the handshake with one complete message and mark the session
+ * authenticated once the PSK-authenticated key exchange completes.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static int ble_process_handshake_message(ble_central_t *central,
+                                         const uint8_t *message,
+                                         size_t message_size)
 {
     uint8_t handshake_output[SECURE_CHANNEL_SERVER_HELLO_SIZE];
     size_t handshake_output_size = 0U;
     bool established = false;
 
-    if (!central->authenticated)
+    if ((secure_channel_process_handshake(
+             &central->secure_channel, message, message_size,
+             handshake_output, sizeof(handshake_output),
+             &handshake_output_size, &established) != 0) ||
+        ((handshake_output_size != 0U) &&
+         (ble_write_fragment(central, handshake_output,
+                             handshake_output_size) != 0)))
     {
-        if (secure_channel_process_handshake(
-                &central->secure_channel, message, message_size,
-                handshake_output, sizeof(handshake_output),
-                &handshake_output_size, &established) != 0)
-        {
-            return -1;
-        }
-        if ((handshake_output_size != 0U) &&
-            (ble_send_wire_message(central, handshake_output,
-                                   handshake_output_size) != 0))
-        {
-            return -1;
-        }
-        if (established)
-        {
-            if ((ble_set_authenticated(central, true) != 0) ||
-                (heartbeat_monitor_on_connected(
-                     &central->heartbeat_monitor, ble_monotonic_ms()) != 0))
-            {
-                return -1;
-            }
-            ble_emit_event(central, BLE_CENTRAL_EVENT_CONNECTED,
-                           "authenticated BLE connection established");
-        }
-        return 0;
+        return -1;
     }
-
+    if (established)
     {
-        uint8_t plaintext[SECURE_CHANNEL_MAX_MESSAGE_SIZE];
-        size_t plaintext_size = 0U;
-        secure_channel_message_type_t message_type;
-
-        if (secure_channel_open(&central->secure_channel, message,
-                                message_size, &message_type, plaintext,
-                                sizeof(plaintext), &plaintext_size) != 0)
+        if ((ble_set_authenticated(central, true) != 0) ||
+            (heartbeat_monitor_on_connected(&central->heartbeat_monitor,
+                                            ble_monotonic_ms()) != 0))
         {
-            OPENSSL_cleanse(plaintext, sizeof(plaintext));
             return -1;
         }
-        if (message_type == SECURE_CHANNEL_MESSAGE_HEARTBEAT)
-        {
-            if ((plaintext_size != 0U) ||
-                (heartbeat_monitor_on_heartbeat(
-                     &central->heartbeat_monitor, ble_monotonic_ms(),
-                     ble_heartbeat_acknowledge, central) != 0))
-            {
-                OPENSSL_cleanse(plaintext, sizeof(plaintext));
-                return -1;
-            }
-            OPENSSL_cleanse(plaintext, sizeof(plaintext));
-            return 0;
-        }
-        else if (message_type == SECURE_CHANNEL_MESSAGE_DAY_END)
-        {
-            if ((plaintext_size != 0U) ||
-                (heartbeat_monitor_on_day_end(&central->heartbeat_monitor) !=
-                 0))
-            {
-                OPENSSL_cleanse(plaintext, sizeof(plaintext));
-                return -1;
-            }
-        }
-
-        if ((message_type == SECURE_CHANNEL_MESSAGE_STARTUP) ||
-            (message_type == SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT) ||
-            (central->on_message == NULL) ||
-            (central->on_message(central->callback_context, message_type,
-                                 plaintext, plaintext_size) != 0))
-        {
-            OPENSSL_cleanse(plaintext, sizeof(plaintext));
-            return -1;
-        }
-        OPENSSL_cleanse(plaintext, sizeof(plaintext));
+        ble_emit_event(central, BLE_CENTRAL_EVENT_CONNECTED,
+                       "authenticated BLE connection established");
     }
     return 0;
 }
 
+/*
+ * Handle one authenticated ESP32 message. Heartbeats are acknowledged and
+ * day-end stops monitoring. STARTUP and ACKNOWLEDGEMENT only flow from the
+ * gateway to the ESP32 and are rejected. Design Document, Chapter 6,
+ * Section 6.1, Requirements 3.4 and 3.5.
+ */
+static int ble_dispatch_message(ble_central_t *central,
+                                secure_channel_message_type_t message_type,
+                                const uint8_t *payload,
+                                size_t payload_size)
+{
+    if (message_type == SECURE_CHANNEL_MESSAGE_HEARTBEAT)
+    {
+        return ((payload_size == 0U) &&
+                (heartbeat_monitor_on_heartbeat(
+                     &central->heartbeat_monitor, ble_monotonic_ms(),
+                     ble_heartbeat_acknowledge, central) == 0))
+                   ? 0
+                   : -1;
+    }
+    if ((message_type == SECURE_CHANNEL_MESSAGE_STARTUP) ||
+        (message_type == SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT))
+    {
+        return -1;
+    }
+    if ((message_type == SECURE_CHANNEL_MESSAGE_DAY_END) &&
+        ((payload_size != 0U) ||
+         (heartbeat_monitor_on_day_end(&central->heartbeat_monitor) != 0)))
+    {
+        return -1;
+    }
+    return (central->on_message(central->callback_context, message_type,
+                                payload, payload_size) == 0)
+               ? 0
+               : -1;
+}
+
+/*
+ * Authenticate and decrypt one protected message, dispatch it, and always
+ * erase the plaintext. Design Document, Chapter 6, Section 6.2,
+ * Requirements 4.2 and 4.3.
+ */
+static int ble_process_protected_message(ble_central_t *central,
+                                         const uint8_t *message,
+                                         size_t message_size)
+{
+    uint8_t plaintext[SECURE_CHANNEL_MAX_MESSAGE_SIZE];
+    size_t plaintext_size = 0U;
+    secure_channel_message_type_t message_type;
+    int result = -1;
+
+    if (secure_channel_open(&central->secure_channel, message, message_size,
+                            &message_type, plaintext, sizeof(plaintext),
+                            &plaintext_size) == 0)
+    {
+        result = ble_dispatch_message(central, message_type, plaintext,
+                                      plaintext_size);
+    }
+    OPENSSL_cleanse(plaintext, sizeof(plaintext));
+    return result;
+}
+
+/*
+ * Validate one GATT fragment and reassemble in-order fragments into a protected
+ * message; stalled or malformed sequences end the session.
+ * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
+ */
 static int ble_process_fragment(ble_central_t *central,
                                 const uint8_t *fragment,
                                 size_t fragment_size)
@@ -966,8 +1058,8 @@ static int ble_process_fragment(ble_central_t *central,
 
         if (expected_count == central->reassembly_count)
         {
-            result = ble_process_wire_message(central, central->reassembly,
-                                              central->reassembly_size);
+            result = ble_process_protected_message(
+                central, central->reassembly, central->reassembly_size);
         }
         central->reassembly_active = false;
         OPENSSL_cleanse(central->reassembly, central->reassembly_size);
@@ -977,6 +1069,11 @@ static int ble_process_fragment(ble_central_t *central,
     return 0;
 }
 
+/*
+ * Process every queued GATT value; the first failure ends the session. Before
+ * authentication each value is one unfragmented handshake message, afterwards
+ * a fragment of a protected message.
+ */
 static int ble_process_queued_packets(ble_central_t *central)
 {
     while (central->packet_count != 0U)
@@ -984,15 +1081,14 @@ static int ble_process_queued_packets(ble_central_t *central)
         ble_packet_t *packet = &central->packet_queue[central->packet_head];
         int result;
 
-        if (!central->authenticated && (packet->size >= 5U) &&
-            (memcmp(packet->bytes, "MDP1", 4U) == 0))
+        if (central->authenticated)
         {
-            result = ble_process_wire_message(central, packet->bytes,
-                                              packet->size);
+            result = ble_process_fragment(central, packet->bytes, packet->size);
         }
         else
         {
-            result = ble_process_fragment(central, packet->bytes, packet->size);
+            result = ble_process_handshake_message(central, packet->bytes,
+                                                   packet->size);
         }
 
         central->packet_head =
@@ -1007,6 +1103,7 @@ static int ble_process_queued_packets(ble_central_t *central)
     return 0;
 }
 
+/* Send one queued application message on the worker thread. */
 static int ble_process_send_request(ble_central_t *central,
                                     ble_send_request_t *request)
 {
@@ -1014,6 +1111,7 @@ static int ble_process_send_request(ble_central_t *central,
                            request->payload_size);
 }
 
+/* Remove the oldest pending send request from the queue, if any. */
 static ble_send_request_t *ble_pop_send_request(ble_central_t *central)
 {
     ble_send_request_t *request = NULL;
@@ -1033,6 +1131,7 @@ static ble_send_request_t *ble_pop_send_request(ble_central_t *central)
     return request;
 }
 
+/* Publish a send result and wake the thread waiting in ble_central_send(). */
 static void ble_complete_send_request(ble_central_t *central,
                                       ble_send_request_t *request,
                                       int result)
@@ -1044,6 +1143,7 @@ static void ble_complete_send_request(ble_central_t *central,
     (void)pthread_mutex_unlock(&central->mutex);
 }
 
+/* Send all queued messages; the first failure ends the session. */
 static int ble_drain_send_queue(ble_central_t *central)
 {
     ble_send_request_t *request;
@@ -1061,6 +1161,7 @@ static int ble_drain_send_queue(ble_central_t *central)
     return 0;
 }
 
+/* Subscribe to BlueZ property-change signals used for notifications. */
 static int ble_add_signal_match(ble_central_t *central)
 {
     DBusError error;
@@ -1084,6 +1185,7 @@ static int ble_add_signal_match(ble_central_t *central)
     return 0;
 }
 
+/* Fail every pending send request so no caller waits on a dead session. */
 static void ble_fail_queued_requests(ble_central_t *central)
 {
     ble_send_request_t *request;
@@ -1094,11 +1196,16 @@ static void ble_fail_queued_requests(ble_central_t *central)
     }
 }
 
+/*
+ * Run one BLE session: handshake within 15 s, then serve fragments, sends and
+ * heartbeats until stop, failure, or disconnect; always erase session state.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9, and
+ * Section 6.1, Requirement 3.5.
+ */
 static int ble_run_connected_session(ble_central_t *central)
 {
     uint8_t first_message[SECURE_CHANNEL_CLIENT_HELLO_SIZE];
     size_t first_message_size = 0U;
-    uint64_t next_heartbeat_tick = ble_monotonic_ms();
     uint64_t handshake_started_ms;
     bool was_authenticated = false;
     int result = -1;
@@ -1109,8 +1216,7 @@ static int ble_run_connected_session(ble_central_t *central)
         secure_channel_start(&central->secure_channel, first_message,
                              sizeof(first_message),
                              &first_message_size) != 0 ||
-        ble_send_wire_message(central, first_message,
-                              first_message_size) != 0)
+        ble_write_fragment(central, first_message, first_message_size) != 0)
     {
         goto cleanup;
     }
@@ -1140,18 +1246,7 @@ static int ble_run_connected_session(ble_central_t *central)
         {
             goto cleanup;
         }
-        if (now >= next_heartbeat_tick)
-        {
-            if (heartbeat_monitor_tick(
-                    &central->heartbeat_monitor, now, ble_heartbeat_alert,
-                    ble_reconnect_requested, central) != 0)
-            {
-                ble_emit_event(central, BLE_CENTRAL_EVENT_ERROR,
-                               "heartbeat monitor callback failed");
-                goto cleanup;
-            }
-            next_heartbeat_tick = now + UINT64_C(1000);
-        }
+        ble_monitor_if_due(central);
     }
     result = central->fatal_error ? -1 : 0;
 
@@ -1175,20 +1270,22 @@ cleanup:
     ble_fail_queued_requests(central);
     (void)ble_call_no_arguments(central, central->characteristic_path,
                                 BLUEZ_CHARACTERISTIC, "StopNotify");
-    if (central->device_path[0] != '\0')
-    {
-        (void)ble_call_no_arguments(central, central->device_path,
-                                    BLUEZ_DEVICE, "Disconnect");
-        central->device_path[0] = '\0';
-    }
+    ble_disconnect_device(central);
     return result;
 }
 
+/*
+ * Worker thread: keep the heartbeat monitor running, find and connect to the
+ * ESP32, run sessions, and retry every five seconds until stopped.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.5.
+ */
 static void *ble_worker(void *argument)
 {
     ble_central_t *central = argument;
     DBusError error;
+    uint64_t retry_until_ms;
 
+    central->monitor_tick_due_ms = ble_monotonic_ms();
     if (heartbeat_monitor_start(&central->heartbeat_monitor,
                                 ble_monotonic_ms()) != 0)
     {
@@ -1237,31 +1334,13 @@ static void *ble_worker(void *argument)
                 ble_emit_event(central, BLE_CENTRAL_EVENT_ERROR,
                                "BlueZ discovery or GATT setup failed");
             }
-            if (central->device_path[0] != '\0')
-            {
-                (void)ble_call_no_arguments(central, central->device_path,
-                                            BLUEZ_DEVICE, "Disconnect");
-                central->device_path[0] = '\0';
-            }
+            ble_disconnect_device(central);
         }
-        if (ble_should_stop(central))
+        retry_until_ms = ble_monotonic_ms() + BLE_CONNECT_RETRY_MS;
+        while (!ble_should_stop(central) &&
+               (ble_monotonic_ms() < retry_until_ms))
         {
-            break;
-        }
-        for (unsigned int elapsed = 0U;
-             (elapsed < BLE_CONNECT_RETRY_MS) && !ble_should_stop(central);
-             elapsed += 100U)
-        {
-            (void)dbus_connection_read_write_dispatch(central->bus, 100);
-            if ((elapsed % 1000U) == 0U &&
-                (heartbeat_monitor_tick(
-                     &central->heartbeat_monitor, ble_monotonic_ms(),
-                     ble_heartbeat_alert, ble_reconnect_requested,
-                     central) != 0))
-            {
-                ble_emit_event(central, BLE_CENTRAL_EVENT_ERROR,
-                               "heartbeat monitor callback failed");
-            }
+            ble_wait_and_monitor(central, 100);
         }
     }
 
@@ -1282,6 +1361,11 @@ finish:
     return NULL;
 }
 
+/*
+ * Validate the configuration and create the central; the configured address
+ * is the only device it will ever connect to.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.7 and 4.8.
+ */
 ble_central_t *ble_central_create(const ble_central_config_t *config)
 {
     ble_central_t *central;
@@ -1349,6 +1433,7 @@ ble_central_t *ble_central_create(const ble_central_config_t *config)
     return central;
 }
 
+/* Start the worker thread; returns once it is launched, not connected. */
 int ble_central_start(ble_central_t *central)
 {
     if (central == NULL)
@@ -1374,6 +1459,7 @@ int ble_central_start(ble_central_t *central)
     return 0;
 }
 
+/* Request the worker to stop and wait for it to finish. */
 void ble_central_stop(ble_central_t *central)
 {
     bool join_thread;
@@ -1396,6 +1482,7 @@ void ble_central_stop(ble_central_t *central)
     }
 }
 
+/* Stop the worker, erase the PSK, and release the central. */
 void ble_central_destroy(ble_central_t *central)
 {
     if (central == NULL)
@@ -1409,6 +1496,11 @@ void ble_central_destroy(ble_central_t *central)
     free(central);
 }
 
+/*
+ * Send a STARTUP or ACKNOWLEDGEMENT message on the authenticated session,
+ * waiting for completion when called from another thread.
+ * Design Document, Chapter 6, Section 6.1, Requirement 1.4.
+ */
 int ble_central_send(ble_central_t *central,
                      secure_channel_message_type_t message_type,
                      const uint8_t *payload,
@@ -1416,7 +1508,7 @@ int ble_central_send(ble_central_t *central,
 {
     ble_send_request_t request;
 
-    if ((central == NULL) || !ble_known_message_type(message_type) ||
+    if ((central == NULL) ||
         ((message_type != SECURE_CHANNEL_MESSAGE_STARTUP) &&
          (message_type != SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT)) ||
         (payload_size > SECURE_CHANNEL_MAX_MESSAGE_SIZE) ||
@@ -1478,6 +1570,11 @@ int ble_central_send(ble_central_t *central,
     return request.result;
 }
 
+/*
+ * Adapt ble_central_send() to ble_send_startup_data() for the schedule and
+ * time transfer. Design Document, Chapter 6, Section 6.1, Requirements 1.4
+ * and 1.5.
+ */
 int ble_central_secure_send_payload(void *central,
                                     const uint8_t *payload,
                                     size_t payload_size)

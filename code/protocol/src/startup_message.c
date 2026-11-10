@@ -74,8 +74,8 @@ bool startup_schedule_is_valid(const startup_daily_schedule_t *schedule)
  * Calculate the exact startup payload size after validating its schedule.
  * Design Document, Chapter 2, Section 2.1 (software modules).
  */
-bool startup_message_size(const startup_daily_schedule_t *schedule,
-                          size_t *message_size)
+static bool startup_message_size(const startup_daily_schedule_t *schedule,
+                                 size_t *message_size)
 {
     size_t entries_size;
 

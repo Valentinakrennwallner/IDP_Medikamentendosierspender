@@ -20,7 +20,6 @@ typedef struct
     uint64_t next_reconnect_ms;
     bool connected;
     bool autonomous;
-    bool reconnect_scheduled;
     bool heartbeat_sent;
 } heartbeat_client_t;
 

@@ -94,6 +94,54 @@ static int test_authenticated_round_trip(void)
     return 0;
 }
 
+/*
+ * Verify the empty-payload heartbeat and acknowledgement messages in both
+ * directions (Design Document, Chapter 6, Section 6.1, Requirement 3.4).
+ */
+static int test_empty_messages_round_trip(void)
+{
+    static const uint8_t psk[SECURE_CHANNEL_PSK_SIZE] = {
+        0x21U, 0x32U, 0x43U, 0x54U, 0x65U, 0x76U, 0x87U, 0x98U,
+        0xA9U, 0xBAU, 0xCBU, 0xDCU, 0xEDU, 0xFEU, 0x0FU, 0x10U,
+        0x22U, 0x33U, 0x44U, 0x55U, 0x66U, 0x77U, 0x88U, 0x99U,
+        0xAAU, 0xBBU, 0xCCU, 0xDDU, 0xEEU, 0xFFU, 0x01U, 0x12U};
+    secure_channel_t client;
+    secure_channel_t server;
+    secure_channel_message_type_t received_type;
+    uint8_t frame[SECURE_CHANNEL_OVERHEAD];
+    uint8_t plaintext[1];
+    size_t frame_size = 0U;
+    size_t plaintext_size = 1U;
+    int result = 1;
+
+    if ((secure_channel_init(&client, SECURE_CHANNEL_ROLE_CLIENT, psk) == 0) &&
+        (secure_channel_init(&server, SECURE_CHANNEL_ROLE_SERVER, psk) == 0) &&
+        (perform_handshake(&client, &server) == 0) &&
+        (secure_channel_seal(&server, SECURE_CHANNEL_MESSAGE_HEARTBEAT, NULL,
+                             0U, frame, sizeof(frame), &frame_size) == 0) &&
+        (frame_size == SECURE_CHANNEL_OVERHEAD) &&
+        (secure_channel_open(&client, frame, frame_size, &received_type,
+                             plaintext, sizeof(plaintext),
+                             &plaintext_size) == 0) &&
+        (received_type == SECURE_CHANNEL_MESSAGE_HEARTBEAT) &&
+        (plaintext_size == 0U) &&
+        (secure_channel_seal(&client,
+                             SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT, NULL, 0U,
+                             frame, sizeof(frame), &frame_size) == 0) &&
+        (secure_channel_open(&server, frame, frame_size, &received_type,
+                             plaintext, sizeof(plaintext),
+                             &plaintext_size) == 0) &&
+        (received_type == SECURE_CHANNEL_MESSAGE_ACKNOWLEDGEMENT) &&
+        (plaintext_size == 0U))
+    {
+        result = 0;
+    }
+
+    secure_channel_clear(&client);
+    secure_channel_clear(&server);
+    return result;
+}
+
 /* Verify that the PSK authenticates the handshake transcript. */
 static int test_rejects_wrong_psk(void)
 {
@@ -196,6 +244,7 @@ static int test_rejects_tampered_message(void)
 int main(void)
 {
     if ((test_authenticated_round_trip() != 0) ||
+        (test_empty_messages_round_trip() != 0) ||
         (test_rejects_wrong_psk() != 0) ||
         (test_rejects_tampered_message() != 0))
     {

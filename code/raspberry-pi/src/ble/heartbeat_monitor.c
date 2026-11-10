@@ -1,5 +1,7 @@
 #include "heartbeat_monitor.h"
 
+#include <stddef.h>
+
 /*
  * Initialize gateway heartbeat monitoring. Design Document, Chapter 2,
  * Section 2.1, and Chapter 6, Section 6.1, Requirements 3.4 and 3.5.
@@ -12,8 +14,6 @@ void heartbeat_monitor_init(heartbeat_monitor_t *monitor)
         monitor->last_reconnect_attempt_ms = 0U;
         monitor->connected = false;
         monitor->monitoring = false;
-        monitor->day_ended = false;
-        monitor->timed_out = false;
         monitor->reconnect_attempted = false;
         monitor->alert_sent = false;
     }
@@ -35,8 +35,6 @@ int heartbeat_monitor_start(heartbeat_monitor_t *monitor,
     monitor->last_reconnect_attempt_ms = 0U;
     monitor->connected = false;
     monitor->monitoring = true;
-    monitor->day_ended = false;
-    monitor->timed_out = false;
     monitor->reconnect_attempted = false;
     monitor->alert_sent = false;
     return 0;
@@ -68,14 +66,13 @@ int heartbeat_monitor_on_heartbeat(heartbeat_monitor_t *monitor,
                                    void *context)
 {
     if ((monitor == NULL) || (acknowledge == NULL) || !monitor->connected ||
-        !monitor->monitoring || monitor->day_ended ||
+        !monitor->monitoring ||
         (monotonic_time_ms < monitor->last_heartbeat_ms))
     {
         return -1;
     }
 
     monitor->last_heartbeat_ms = monotonic_time_ms;
-    monitor->timed_out = false;
     monitor->reconnect_attempted = false;
     monitor->alert_sent = false;
     return acknowledge(context);
@@ -93,8 +90,6 @@ int heartbeat_monitor_on_day_end(heartbeat_monitor_t *monitor)
     }
 
     monitor->monitoring = false;
-    monitor->day_ended = true;
-    monitor->timed_out = false;
     monitor->reconnect_attempted = false;
     return 0;
 }
@@ -134,7 +129,7 @@ int heartbeat_monitor_tick(heartbeat_monitor_t *monitor,
         return -1;
     }
 
-    if (!monitor->monitoring || monitor->day_ended)
+    if (!monitor->monitoring)
     {
         return 0;
     }
@@ -149,7 +144,6 @@ int heartbeat_monitor_tick(heartbeat_monitor_t *monitor,
         HEARTBEAT_TIMEOUT_MS;
     if (timeout_reached)
     {
-        monitor->timed_out = true;
         monitor->connected = false;
 
         if (!monitor->alert_sent)

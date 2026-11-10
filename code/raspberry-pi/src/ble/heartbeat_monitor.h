@@ -17,8 +17,6 @@ typedef struct
     uint64_t last_reconnect_attempt_ms;
     bool connected;
     bool monitoring;
-    bool day_ended;
-    bool timed_out;
     bool reconnect_attempted;
     bool alert_sent;
 } heartbeat_monitor_t;

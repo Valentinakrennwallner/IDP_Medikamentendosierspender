@@ -11,7 +11,9 @@ single bidirectional characteristic
 `7e400002-b5a3-f393-e0a9-e50e24dcca9e`, with Write and Notify properties.
 The Pi enables notifications and writes handshake/application fragments to
 that characteristic. Neither endpoint handles application payloads before
-the secure-channel handshake completes.
+the secure-channel handshake completes. Until the handshake completes, every
+GATT value is exactly one handshake message without the fragment header;
+afterwards every value is a fragment of a protected message.
 Negotiate ATT MTU 191 or greater before starting the handshake; disconnect
 if the negotiated MTU is below 191.
 

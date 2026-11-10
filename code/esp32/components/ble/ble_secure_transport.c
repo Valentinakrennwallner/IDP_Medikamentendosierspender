@@ -64,6 +64,10 @@ static int gatt_access(uint16_t connection_handle, uint16_t attribute_handle,
 static int start_advertising(void);
 static int gap_event(struct ble_gap_event *event, void *argument);
 
+/*
+ * Disconnect a peer that has not completed the PSK-authenticated handshake
+ * in time. Design Document, Chapter 6, Section 6.2, Requirement 4.9.
+ */
 static void handshake_timeout(void *argument)
 {
     (void)argument;
@@ -74,6 +78,10 @@ static void handshake_timeout(void *argument)
     }
 }
 
+/*
+ * Disconnect a peer whose fragmented message stalls.
+ * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
+ */
 static void reassembly_timeout(void *argument)
 {
     (void)argument;
@@ -83,17 +91,20 @@ static void reassembly_timeout(void *argument)
     }
 }
 
+/* Decode a 16-bit GATT fragment header field in network byte order. */
 static uint16_t read_u16_be(const uint8_t *bytes)
 {
     return (uint16_t)(((uint16_t)bytes[0] << 8U) | bytes[1]);
 }
 
+/* Encode a 16-bit GATT fragment header field in network byte order. */
 static void write_u16_be(uint8_t *bytes, uint16_t value)
 {
     bytes[0] = (uint8_t)(value >> 8U);
     bytes[1] = (uint8_t)value;
 }
 
+/* Discard a partially received fragmented message and its timer. */
 static void clear_reassembly(void)
 {
     reassembly_active = false;
@@ -108,9 +119,12 @@ static void clear_reassembly(void)
     }
 }
 
-static void close_connection(void)
+/*
+ * Drop all per-connection state and erase session keys and message buffers.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static void reset_session(void)
 {
-    uint16_t connection = active_connection;
     active_connection = BLE_HS_CONN_HANDLE_NONE;
     handshake_established = false;
     transmit_pending = false;
@@ -121,23 +135,29 @@ static void close_connection(void)
     clear_reassembly();
     secure_channel_clear(&secure_channel);
     (void)memset(&secure_channel, 0, sizeof(secure_channel));
-    mbedtls_platform_zeroize(receive_message,
-                             sizeof(receive_message));
-    mbedtls_platform_zeroize(protected_message,
-                             sizeof(protected_message));
-    mbedtls_platform_zeroize(plaintext, sizeof(plaintext));
-    mbedtls_platform_zeroize(fragment_buffer,
-                             sizeof(fragment_buffer));
     mbedtls_platform_zeroize(receive_message, sizeof(receive_message));
     mbedtls_platform_zeroize(protected_message, sizeof(protected_message));
     mbedtls_platform_zeroize(plaintext, sizeof(plaintext));
     mbedtls_platform_zeroize(fragment_buffer, sizeof(fragment_buffer));
+}
+
+/*
+ * Erase the session and terminate the BLE link after an authentication,
+ * framing, or transport failure.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2, 4.3, and 4.9.
+ */
+static void close_connection(void)
+{
+    uint16_t connection = active_connection;
+
+    reset_session();
     if (connection != BLE_HS_CONN_HANDLE_NONE)
     {
         (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
     }
 }
 
+/* Send one unfragmented GATT notification within the negotiated MTU. */
 static int notify_raw(const uint8_t *data, size_t size)
 {
     struct os_mbuf *om;
@@ -158,6 +178,7 @@ static int notify_raw(const uint8_t *data, size_t size)
     return (result == 0) ? 0 : -1;
 }
 
+/* Notify the next fragment of the pending protected message. */
 static int send_next_notification(void)
 {
     size_t chunk = transmit_message_size - transmit_offset;
@@ -191,6 +212,11 @@ static int send_next_notification(void)
     return 0;
 }
 
+/*
+ * Start fragmented transmission of a protected message once the negotiated
+ * MTU carries a full fragment.
+ * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
+ */
 static int notify_protected(const uint8_t *data, size_t size)
 {
     if ((data == NULL) || (size == 0U) || (size > sizeof(protected_message)) ||
@@ -210,64 +236,63 @@ static int notify_protected(const uint8_t *data, size_t size)
     return send_next_notification();
 }
 
-static int process_complete_message(const uint8_t *data, size_t size)
+/*
+ * Advance the handshake with one complete message; the session becomes
+ * established only after the PSK-authenticated key exchange completes.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static int process_handshake_message(const uint8_t *data, size_t size)
 {
-    uint8_t handshake_reply[SERVER_HELLO_SIZE];
+    uint8_t handshake_reply[SECURE_CHANNEL_SERVER_HELLO_SIZE];
     size_t handshake_reply_size = 0U;
     bool established = false;
 
-    if (!handshake_established)
+    if ((secure_channel_process_handshake(&secure_channel, data, size,
+                                          handshake_reply,
+                                          sizeof(handshake_reply),
+                                          &handshake_reply_size,
+                                          &established) != 0) ||
+        ((handshake_reply_size != 0U) &&
+         (notify_raw(handshake_reply, handshake_reply_size) != 0)))
     {
-        if (secure_channel_process_handshake(&secure_channel, data, size,
-                                             handshake_reply, sizeof(handshake_reply),
-                                             &handshake_reply_size, &established) != 0)
-        {
-            return -1;
-        }
-        if ((handshake_reply_size != 0U) &&
-            (notify_raw(handshake_reply, handshake_reply_size) != 0))
-        {
-            return -1;
-        }
-        if (established)
-        {
-            handshake_established = true;
-            if (handshake_timer != NULL)
-            {
-                (void)esp_timer_stop(handshake_timer);
-            }
-            ESP_LOGI(TAG, "BLE secure-channel handshake established");
-        }
-        return 0;
+        return -1;
     }
-
+    if (established)
     {
-        secure_channel_message_type_t message_type;
-        size_t plaintext_size = 0U;
-        if (secure_channel_open(&secure_channel, data, size, &message_type, plaintext,
-                                sizeof(plaintext), &plaintext_size) != 0)
-        {
-            return -1;
-        }
-        if (message_callback != NULL)
-        {
-            int callback_result = message_callback(
-                message_type, plaintext, plaintext_size, message_context);
-            mbedtls_platform_zeroize(plaintext, plaintext_size);
-            if (callback_result != 0)
-            {
-                return -1;
-            }
-        }
-        else
-        {
-            mbedtls_platform_zeroize(plaintext, plaintext_size);
-            return -1;
-        }
+        handshake_established = true;
+        (void)esp_timer_stop(handshake_timer);
+        ESP_LOGI(TAG, "BLE secure-channel handshake established");
     }
     return 0;
 }
 
+/*
+ * Authenticate and decrypt one protected message, pass it to the application
+ * callback, and always erase the plaintext.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
+static int process_protected_message(const uint8_t *data, size_t size)
+{
+    secure_channel_message_type_t message_type;
+    size_t plaintext_size = 0U;
+    int result = -1;
+
+    if (secure_channel_open(&secure_channel, data, size, &message_type,
+                            plaintext, sizeof(plaintext),
+                            &plaintext_size) == 0)
+    {
+        result = message_callback(message_type, plaintext, plaintext_size,
+                                  message_context);
+    }
+    mbedtls_platform_zeroize(plaintext, sizeof(plaintext));
+    return (result == 0) ? 0 : -1;
+}
+
+/*
+ * Validate one GATT fragment and reassemble in-order fragments into a
+ * protected message; stalled or malformed sequences close the connection.
+ * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
+ */
 static int receive_fragment(const uint8_t *value, size_t value_size)
 {
     uint16_t message_id;
@@ -331,13 +356,20 @@ static int receive_fragment(const uint8_t *value, size_t value_size)
         size_t completed_size = receive_message_size;
         int result;
         clear_reassembly();
-        result = process_complete_message(receive_message, completed_size);
+        result = process_protected_message(receive_message, completed_size);
         mbedtls_platform_zeroize(receive_message, completed_size);
         return result;
     }
     return 0;
 }
 
+/*
+ * Handle a write from the connected Pi. Before the handshake completes every
+ * write is one unfragmented handshake message; afterwards every write is a
+ * fragment of a protected message. Malformed or unauthenticated input closes
+ * the connection.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2, 4.3, and 4.9.
+ */
 static int gatt_access(uint16_t connection_handle, uint16_t attribute_handle,
                        struct ble_gatt_access_ctxt *context, void *argument)
 {
@@ -364,10 +396,9 @@ static int gatt_access(uint16_t connection_handle, uint16_t attribute_handle,
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
 
-    if (!handshake_established && (value_size >= 5U) &&
-        (memcmp(value, "MDP1", 4U) == 0))
+    if (!handshake_established)
     {
-        if (process_complete_message(value, value_size) != 0)
+        if (process_handshake_message(value, value_size) != 0)
         {
             close_connection();
             return BLE_ATT_ERR_UNLIKELY;
@@ -402,6 +433,10 @@ static const struct ble_gatt_svc_def services[] = {
     {0}
 };
 
+/*
+ * Advertise the shared service so the configured Pi can connect.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.2.
+ */
 static int start_advertising(void)
 {
     struct ble_hs_adv_fields fields;
@@ -430,6 +465,11 @@ static int start_advertising(void)
     return result;
 }
 
+/*
+ * Handle NimBLE connection events: accept one central at a time, start the
+ * handshake deadline, and erase the session on disconnection.
+ * Design Document, Chapter 6, Section 6.2, Requirement 4.8.
+ */
 static int gap_event(struct ble_gap_event *event, void *argument)
 {
     (void)argument;
@@ -478,15 +518,7 @@ static int gap_event(struct ble_gap_event *event, void *argument)
         case BLE_GAP_EVENT_DISCONNECT:
             if (event->disconnect.conn.conn_handle == active_connection)
             {
-                active_connection = BLE_HS_CONN_HANDLE_NONE;
-                handshake_established = false;
-                if (handshake_timer != NULL)
-                {
-                    (void)esp_timer_stop(handshake_timer);
-                }
-                clear_reassembly();
-                secure_channel_clear(&secure_channel);
-                (void)memset(&secure_channel, 0, sizeof(secure_channel));
+                reset_session();
             }
             (void)start_advertising();
             break;
@@ -511,6 +543,7 @@ static int gap_event(struct ble_gap_event *event, void *argument)
     return 0;
 }
 
+/* Start advertising when the NimBLE host and controller are synchronized. */
 static void host_sync(void)
 {
     int result = ble_hs_id_infer_auto(0, &own_address_type);
@@ -524,6 +557,7 @@ static void host_sync(void)
     }
 }
 
+/* Run the NimBLE host event loop until the port is shut down. */
 static void host_task(void *argument)
 {
     (void)argument;
@@ -531,6 +565,11 @@ static void host_task(void *argument)
     nimble_port_freertos_deinit();
 }
 
+/*
+ * Start the NimBLE peripheral using the commissioned PSK; refuse to start
+ * without a non-zero key and a message callback.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.7 and 4.8.
+ */
 int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
                                ble_secure_message_callback_t on_message,
                                void *context)
@@ -618,6 +657,10 @@ int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
     return 0;
 }
 
+/*
+ * Encrypt and notify one application message to the Pi.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
 int ble_secure_transport_send(secure_channel_message_type_t message_type,
                              const uint8_t *data, size_t size)
 {
@@ -636,6 +679,7 @@ int ble_secure_transport_send(secure_channel_message_type_t message_type,
     return 0;
 }
 
+/* Report whether the PSK-authenticated handshake has completed. */
 int ble_secure_transport_is_established(void)
 {
     return handshake_established ? 1 : 0;

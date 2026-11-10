@@ -47,7 +47,8 @@ int secure_channel_init(secure_channel_t *channel,
                         secure_channel_role_t role,
                         const uint8_t psk[SECURE_CHANNEL_PSK_SIZE]);
 
-/* Begin the client handshake by writing the fixed-size ClientHello. */
+/* Begin the client handshake by writing the fixed-size ClientHello. The ESP32
+ * backend is server-only and does not provide this function. */
 int secure_channel_start(secure_channel_t *channel,
                          uint8_t *output,
                          size_t output_capacity,

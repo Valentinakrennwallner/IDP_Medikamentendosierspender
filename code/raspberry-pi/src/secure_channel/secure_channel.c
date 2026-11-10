@@ -619,6 +619,7 @@ int secure_channel_seal(secure_channel_t *channel,
                         size_t *output_size)
 {
     int result = -1;
+    int aad_length = 0;
     int output_length = 0;
     int final_length = 0;
     uint8_t nonce[12];
@@ -658,7 +659,7 @@ int secure_channel_seal(secure_channel_t *channel,
                              (int)sizeof(nonce), NULL) != 1) ||
         (EVP_EncryptInit_ex(cipher_context, NULL, NULL, internal->session_key,
                             nonce) != 1) ||
-        (EVP_EncryptUpdate(cipher_context, NULL, &output_length, output,
+        (EVP_EncryptUpdate(cipher_context, NULL, &aad_length, output,
                            (int)SECURE_CHANNEL_HEADER_SIZE) != 1) ||
         ((plaintext_size > 0U) &&
          (EVP_EncryptUpdate(
@@ -700,6 +701,7 @@ int secure_channel_open(secure_channel_t *channel,
                         size_t *plaintext_size)
 {
     int result = -1;
+    int aad_length = 0;
     int output_length = 0;
     int final_length = 0;
     uint32_t encoded_size;
@@ -743,7 +745,7 @@ int secure_channel_open(secure_channel_t *channel,
                              (int)sizeof(nonce), NULL) != 1) ||
         (EVP_DecryptInit_ex(cipher_context, NULL, NULL, internal->session_key,
                             nonce) != 1) ||
-        (EVP_DecryptUpdate(cipher_context, NULL, &output_length, input,
+        (EVP_DecryptUpdate(cipher_context, NULL, &aad_length, input,
                            (int)SECURE_CHANNEL_HEADER_SIZE) != 1) ||
         ((encoded_size > 0U) &&
          (EVP_DecryptUpdate(

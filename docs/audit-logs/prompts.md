@@ -23,3 +23,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - remember instructions about commenting functions
 - implement key exchange and encryption
 - implement time critical weighing function
+- you are an experienced developer of safety critical software. review the functionality that has been implemented already against the specification, eliminate redundant code and reduce complexity where possible (Claude Sonnet 5.5)

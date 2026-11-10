@@ -20,7 +20,6 @@ add_executable(medication_dispenser_gateway
     src/ble/heartbeat_monitor.c
     src/ble/bluez_central.c
     src/secure_channel/secure_channel.c
-    src/schedule/schedule.c
     src/time_sync/time_sync.c
     src/notifications/telegram.c
     ../protocol/src/startup_message.c
@@ -59,7 +58,6 @@ if(BUILD_TESTING)
         test/startup_transfer_test.c
         ../esp32/components/ble/startup_receiver.c
         src/ble/startup_transfer.c
-        src/schedule/schedule.c
         src/time_sync/time_sync.c
         ../protocol/src/startup_message.c
     )
@@ -94,6 +92,21 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME heartbeat_client_tests COMMAND heartbeat_client_test)
+
+    add_executable(weight_test
+        ../esp32/test/weight_test.c
+        ../esp32/components/weight/weight.c
+    )
+    target_include_directories(weight_test PRIVATE
+        ../esp32/test/mocks
+    )
+    target_compile_options(weight_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(weight_test PRIVATE m)
+    add_test(NAME weight_tests COMMAND weight_test)
 
     add_executable(secure_channel_test
         test/secure_channel_test.c

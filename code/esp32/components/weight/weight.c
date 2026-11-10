@@ -62,6 +62,42 @@ weight_result_t weight_init(void)
     return WEIGHT_RESULT_OK;
 }
 
+/* Wait for the HX711 to signal a finished conversion (data line low). */
+static weight_result_t weight_wait_for_conversion(void)
+{
+    int64_t started_at_us = esp_timer_get_time();
+
+    while (gpio_get_level(HX711_DATA_GPIO) != 0)
+    {
+        if ((esp_timer_get_time() - started_at_us) >= HX711_TIMEOUT_US)
+        {
+            return WEIGHT_RESULT_TIMEOUT;
+        }
+        esp_rom_delay_us(HX711_POLL_DELAY_US);
+    }
+
+    return WEIGHT_RESULT_OK;
+}
+
+/*
+ * Drive one HX711 clock pulse and sample the data line while the clock is
+ * high. The clock is always driven low again so the HX711 cannot power down.
+ */
+static weight_result_t weight_clock_pulse(uint32_t *data_bit)
+{
+    esp_err_t clock_high = gpio_set_level(HX711_CLOCK_GPIO, 1);
+    esp_err_t clock_low;
+
+    esp_rom_delay_us(HX711_CLOCK_DELAY_US);
+    *data_bit = (uint32_t)gpio_get_level(HX711_DATA_GPIO);
+    clock_low = gpio_set_level(HX711_CLOCK_GPIO, 0);
+    esp_rom_delay_us(HX711_CLOCK_DELAY_US);
+
+    return ((clock_high == ESP_OK) && (clock_low == ESP_OK))
+               ? WEIGHT_RESULT_OK
+               : WEIGHT_RESULT_SENSOR_FAULT;
+}
+
 /*
  * Read the signed 24-bit HX711 sample with interrupts masked only while
  * clocking the conversion data.
@@ -70,88 +106,45 @@ weight_result_t weight_init(void)
  */
 static weight_result_t weight_read_raw(int32_t *raw_counts)
 {
-    int64_t started_at_us;
-    int32_t data_level;
     uint32_t shifted_data = 0U;
-    uint32_t bit_index;
+    uint32_t data_bit = 0U;
+    uint32_t pulse;
+    weight_result_t result = weight_wait_for_conversion();
 
-    if (raw_counts == NULL)
+    if (result == WEIGHT_RESULT_OK)
     {
-        return WEIGHT_RESULT_INVALID_ARGUMENT;
-    }
-
-    started_at_us = esp_timer_get_time();
-    for (;;)
-    {
-        data_level = gpio_get_level(HX711_DATA_GPIO);
-        if (data_level < 0)
+        portENTER_CRITICAL(&weight_mux);
+        /* 24 data bits, then one more pulse to select channel A, gain 128. */
+        for (pulse = 0U; (pulse <= HX711_BITS) && (result == WEIGHT_RESULT_OK);
+             ++pulse)
         {
-            return WEIGHT_RESULT_SENSOR_FAULT;
+            result = weight_clock_pulse(&data_bit);
+            if (pulse < HX711_BITS)
+            {
+                shifted_data = (shifted_data << 1U) | data_bit;
+            }
         }
-        if ((esp_timer_get_time() - started_at_us) >= HX711_TIMEOUT_US)
-        {
-            return WEIGHT_RESULT_TIMEOUT;
-        }
-        if (data_level == 0)
-        {
-            break;
-        }
-        esp_rom_delay_us(HX711_POLL_DELAY_US);
-    }
-
-    portENTER_CRITICAL(&weight_mux);
-    for (bit_index = 0U; bit_index < HX711_BITS; ++bit_index)
-    {
-        if (gpio_set_level(HX711_CLOCK_GPIO, 1) != ESP_OK)
-        {
-            portEXIT_CRITICAL(&weight_mux);
-            return WEIGHT_RESULT_SENSOR_FAULT;
-        }
-        esp_rom_delay_us(HX711_CLOCK_DELAY_US);
-        data_level = gpio_get_level(HX711_DATA_GPIO);
-        if (gpio_set_level(HX711_CLOCK_GPIO, 0) != ESP_OK)
-        {
-            portEXIT_CRITICAL(&weight_mux);
-            return WEIGHT_RESULT_SENSOR_FAULT;
-        }
-        esp_rom_delay_us(HX711_CLOCK_DELAY_US);
-        if (data_level < 0)
-        {
-            portEXIT_CRITICAL(&weight_mux);
-            return WEIGHT_RESULT_SENSOR_FAULT;
-        }
-        shifted_data = (shifted_data << 1U) | (uint32_t)data_level;
-    }
-
-    if (gpio_set_level(HX711_CLOCK_GPIO, 1) != ESP_OK)
-    {
         portEXIT_CRITICAL(&weight_mux);
-        return WEIGHT_RESULT_SENSOR_FAULT;
-    }
-    esp_rom_delay_us(HX711_CLOCK_DELAY_US);
-    if (gpio_set_level(HX711_CLOCK_GPIO, 0) != ESP_OK)
-    {
-        portEXIT_CRITICAL(&weight_mux);
-        return WEIGHT_RESULT_SENSOR_FAULT;
-    }
-    esp_rom_delay_us(HX711_CLOCK_DELAY_US);
-    portEXIT_CRITICAL(&weight_mux);
-
-    if ((shifted_data == HX711_MINIMUM_RAW) ||
-        (shifted_data == HX711_MAXIMUM_RAW))
-    {
-        return WEIGHT_RESULT_SENSOR_FAULT;
-    }
-    if ((shifted_data & HX711_SIGN_BIT) != 0U)
-    {
-        *raw_counts = (int32_t)shifted_data - (int32_t)HX711_NEGATIVE_RANGE;
-    }
-    else
-    {
-        *raw_counts = (int32_t)shifted_data;
     }
 
-    return WEIGHT_RESULT_OK;
+    if (result == WEIGHT_RESULT_OK)
+    {
+        if ((shifted_data == HX711_MINIMUM_RAW) ||
+            (shifted_data == HX711_MAXIMUM_RAW))
+        {
+            result = WEIGHT_RESULT_SENSOR_FAULT;
+        }
+        else if ((shifted_data & HX711_SIGN_BIT) != 0U)
+        {
+            *raw_counts = (int32_t)shifted_data - (int32_t)HX711_NEGATIVE_RANGE;
+        }
+        else
+        {
+            *raw_counts = (int32_t)shifted_data;
+        }
+    }
+
+    return result;
 }
 
 /*

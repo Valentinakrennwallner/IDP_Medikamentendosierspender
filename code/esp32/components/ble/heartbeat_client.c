@@ -1,5 +1,7 @@
 #include "heartbeat_client.h"
 
+#include <stddef.h>
+
 /*
  * Initialize ESP32 heartbeat state. Design Document, Chapter 2, Section 2.1,
  * and Chapter 6, Section 6.1, Requirements 3.2 and 3.4.
@@ -13,7 +15,6 @@ void heartbeat_client_init(heartbeat_client_t *client)
         client->next_reconnect_ms = 0U;
         client->connected = false;
         client->autonomous = false;
-        client->reconnect_scheduled = false;
         client->heartbeat_sent = false;
     }
 }
@@ -35,7 +36,6 @@ int heartbeat_client_on_connected(heartbeat_client_t *client,
     client->next_reconnect_ms = 0U;
     client->connected = true;
     client->autonomous = false;
-    client->reconnect_scheduled = false;
     client->heartbeat_sent = false;
     return 0;
 }
@@ -79,12 +79,36 @@ int heartbeat_client_on_disconnected(heartbeat_client_t *client,
         client->autonomous = true;
         client->next_reconnect_ms =
             monotonic_time_ms + HEARTBEAT_RECONNECT_INTERVAL_MS;
-        client->reconnect_scheduled = true;
         if ((ops->enter_autonomous_mode == NULL) ||
             (ops->enter_autonomous_mode(context) != 0))
         {
             result = -1;
         }
+    }
+
+    return result;
+}
+
+/*
+ * Terminate the connection and switch to autonomous mode.
+ * Design Document, Chapter 6, Section 6.1, Requirement 3.2.
+ */
+static int heartbeat_client_drop_connection(heartbeat_client_t *client,
+                                            uint64_t monotonic_time_ms,
+                                            const heartbeat_client_ops_t *ops,
+                                            void *context)
+{
+    int result = 0;
+
+    if ((ops->disconnect_transport == NULL) ||
+        (ops->disconnect_transport(context) != 0))
+    {
+        result = -1;
+    }
+    if (heartbeat_client_on_disconnected(client, monotonic_time_ms, ops,
+                                         context) != 0)
+    {
+        result = -1;
     }
 
     return result;
@@ -119,23 +143,8 @@ int heartbeat_client_tick(heartbeat_client_t *client,
             ((monotonic_time_ms - client->last_acknowledgement_ms) >=
              HEARTBEAT_ACK_TIMEOUT_MS))
         {
-            if ((ops->disconnect_transport == NULL) ||
-                (ops->disconnect_transport(context) != 0))
-            {
-                result = -1;
-            }
-
-            client->connected = false;
-            client->autonomous = true;
-            client->next_reconnect_ms =
-                monotonic_time_ms + HEARTBEAT_RECONNECT_INTERVAL_MS;
-            client->reconnect_scheduled = true;
-            if ((ops->enter_autonomous_mode == NULL) ||
-                (ops->enter_autonomous_mode(context) != 0))
-            {
-                result = -1;
-            }
-            return result;
+            return heartbeat_client_drop_connection(client, monotonic_time_ms,
+                                                    ops, context);
         }
 
         if ((monotonic_time_ms - client->last_heartbeat_sent_ms) >=
@@ -144,13 +153,7 @@ int heartbeat_client_tick(heartbeat_client_t *client,
             if ((ops->send_heartbeat == NULL) ||
                 (ops->send_heartbeat(context) != 0))
             {
-                if ((ops->disconnect_transport == NULL) ||
-                    (ops->disconnect_transport(context) != 0))
-                {
-                    result = -1;
-                }
-
-                (void)heartbeat_client_on_disconnected(
+                (void)heartbeat_client_drop_connection(
                     client, monotonic_time_ms, ops, context);
                 return -1;
             }
@@ -163,14 +166,10 @@ int heartbeat_client_tick(heartbeat_client_t *client,
             client->last_heartbeat_sent_ms = monotonic_time_ms;
         }
     }
-    else if (client->autonomous && client->reconnect_scheduled &&
+    else if (client->autonomous &&
              (monotonic_time_ms >= client->next_reconnect_ms))
     {
-        if (ops->reconnect == NULL)
-        {
-            result = -1;
-        }
-        else if (ops->reconnect(context) != 0)
+        if ((ops->reconnect == NULL) || (ops->reconnect(context) != 0))
         {
             result = -1;
         }

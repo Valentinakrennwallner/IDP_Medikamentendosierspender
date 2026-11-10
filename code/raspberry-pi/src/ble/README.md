@@ -56,7 +56,8 @@ adapts the transport to `ble_send_startup_data()` and sends a protected
 the connected event. All secure sequence management is delegated to the
 `secure_channel` API.
 
-Every handshake and protected frame is carried in the shared BLE fragment
+Handshake messages are written and received as single unfragmented GATT
+values. Every protected frame is carried in the shared BLE fragment
 format. Incoming fragments are accepted only in strict index order, with
 consistent identifiers/counts, exact lengths, bounded total size, and a
 five-second assembly timeout. The handshake also has a 15-second deadline. Any

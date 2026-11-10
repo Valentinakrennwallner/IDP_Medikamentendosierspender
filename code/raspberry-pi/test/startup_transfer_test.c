@@ -1,4 +1,5 @@
 #include "../src/ble/startup_transfer.h"
+#include "../../protocol/include/secure_channel.h"
 #include "../../protocol/include/startup_message.h"
 #include "../../esp32/components/ble/startup_receiver.h"
 
@@ -70,10 +71,10 @@ static int fake_secure_send(void *context,
 /* Verify successful encoding of the daily schedule and current Unix time. */
 static int test_schedule_and_current_time_are_sent(void)
 {
-    schedule_entry_t entries[] = {
+    startup_schedule_entry_t entries[] = {
         {7U * 3600U, 250U},
         {12U * 3600U, 500U}};
-    daily_schedule_t schedule = {entries, 2U};
+    startup_daily_schedule_t schedule = {entries, 2U};
     fake_gateway_t gateway = {0, 0, 0, 0, 0, 1700000400, 0, {{0U, 0U}}, 0U};
     time_sync_ops_t ops = {
         fake_request_sync,
@@ -106,12 +107,12 @@ static int test_schedule_and_current_time_are_sent(void)
 /* Verify invalid schedules and unsynchronized time are never sent. */
 static int test_no_send_without_valid_sync_or_schedule(void)
 {
-    schedule_entry_t invalid_entries[] = {
+    startup_schedule_entry_t invalid_entries[] = {
         {8U * 3600U, 250U},
         {7U * 3600U, 500U}};
-    daily_schedule_t invalid_schedule = {invalid_entries, 2U};
-    schedule_entry_t valid_entries[] = {{8U * 3600U, 250U}};
-    daily_schedule_t valid_schedule = {valid_entries, 1U};
+    startup_daily_schedule_t invalid_schedule = {invalid_entries, 2U};
+    startup_schedule_entry_t valid_entries[] = {{8U * 3600U, 250U}};
+    startup_daily_schedule_t valid_schedule = {valid_entries, 1U};
     fake_gateway_t gateway = {1, 0, 0, 0, 0, 1700000500, 0, {{0U, 0U}}, 0U};
     time_sync_ops_t ops = {
         fake_request_sync,
@@ -140,8 +141,8 @@ static int test_no_send_without_valid_sync_or_schedule(void)
 /* Verify startup transfer rejects a missing secure-transport callback. */
 static int test_transport_failure_is_propagated(void)
 {
-    schedule_entry_t entries[] = {{9U * 3600U, 200U}};
-    daily_schedule_t schedule = {entries, 1U};
+    startup_schedule_entry_t entries[] = {{9U * 3600U, 200U}};
+    startup_daily_schedule_t schedule = {entries, 1U};
     fake_gateway_t gateway = {0, 0, 0, 0, 0, 1700000600, 0, {{0U, 0U}}, 0U};
     time_sync_ops_t ops = {
         fake_request_sync,
@@ -168,8 +169,8 @@ static int test_transport_failure_is_propagated(void)
 /* Verify errors from the secure transport reach the caller. */
 static int test_transport_error_is_propagated(void)
 {
-    schedule_entry_t entries[] = {{9U * 3600U, 200U}};
-    daily_schedule_t schedule = {entries, 1U};
+    startup_schedule_entry_t entries[] = {{9U * 3600U, 200U}};
+    startup_daily_schedule_t schedule = {entries, 1U};
     fake_gateway_t gateway = {0, 0, 0, 1, 0, 1700000700, 0, {{0U, 0U}}, 0U};
     time_sync_ops_t ops = {
         fake_request_sync,
@@ -197,10 +198,10 @@ static int test_transport_error_is_propagated(void)
 /* Verify the ESP32 receiver accepts valid data and clears state on bad input. */
 static int test_esp32_receiver_accepts_and_rejects_payloads(void)
 {
-    schedule_entry_t entries[] = {
+    startup_schedule_entry_t entries[] = {
         {7U * 3600U, 250U},
         {12U * 3600U, 500U}};
-    daily_schedule_t schedule = {entries, 2U};
+    startup_daily_schedule_t schedule = {entries, 2U};
     uint8_t payload[STARTUP_MESSAGE_HEADER_SIZE +
                     (2U * STARTUP_MESSAGE_ENTRY_SIZE)];
     size_t payload_size = 0U;
@@ -252,11 +253,73 @@ static int test_esp32_receiver_accepts_and_rejects_payloads(void)
     return 0;
 }
 
+/* Record the payload size without decoding it. */
+static int record_payload_size(void *context,
+                               const uint8_t *payload,
+                               size_t payload_size)
+{
+    (void)payload;
+    *(size_t *)context = payload_size;
+    return 0;
+}
+
+/* Verify only schedules that fit one protected message are transferred. */
+static int test_schedule_size_is_bounded_by_secure_message(void)
+{
+    enum
+    {
+        max_entries = (SECURE_CHANNEL_MAX_MESSAGE_SIZE -
+                       STARTUP_MESSAGE_HEADER_SIZE) /
+                      STARTUP_MESSAGE_ENTRY_SIZE
+    };
+    startup_schedule_entry_t entries[max_entries + 1U];
+    startup_daily_schedule_t schedule = {entries, max_entries};
+    fake_gateway_t gateway = {0, 0, 0, 0, 0, 1700000900, 0, {{0U, 0U}}, 0U};
+    time_sync_ops_t ops = {
+        fake_request_sync,
+        fake_read_synchronized_time,
+        fake_send_unavailable_alert,
+        &gateway};
+    time_sync_service_t time_sync;
+    uint32_t next_delay = 0U;
+    size_t sent_size = 0U;
+    size_t index;
+
+    for (index = 0U; index < (max_entries + 1U); index++)
+    {
+        entries[index].intake_time_seconds = (uint32_t)((index + 1U) * 60U);
+        entries[index].target_weight_milligrams = 100U;
+    }
+    if ((time_sync_init(&time_sync, &ops) != 0) ||
+        (time_sync_step(&time_sync, &next_delay) != 0))
+    {
+        return 1;
+    }
+
+    if ((ble_send_startup_data(&time_sync, &schedule, record_payload_size,
+                               &sent_size) != 0) ||
+        (sent_size > SECURE_CHANNEL_MAX_MESSAGE_SIZE))
+    {
+        return 1;
+    }
+    sent_size = 0U;
+    schedule.entry_count = max_entries + 1U;
+    if ((ble_send_startup_data(&time_sync, &schedule, record_payload_size,
+                               &sent_size) == 0) ||
+        (sent_size != 0U))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
 /* Run the startup-transfer protocol and receiver tests. */
 int main(void)
 {
     if ((test_schedule_and_current_time_are_sent() != 0) ||
         (test_no_send_without_valid_sync_or_schedule() != 0) ||
+        (test_schedule_size_is_bounded_by_secure_message() != 0) ||
         (test_transport_failure_is_propagated() != 0) ||
         (test_transport_error_is_propagated() != 0) ||
         (test_esp32_receiver_accepts_and_rejects_payloads() != 0))

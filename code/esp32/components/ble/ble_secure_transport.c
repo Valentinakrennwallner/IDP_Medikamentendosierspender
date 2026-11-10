@@ -18,6 +18,7 @@
 #include "ble_wire.h"
 
 #define REASSEMBLY_TIMEOUT_US INT64_C(5000000)
+#define HANDSHAKE_TIMEOUT_US INT64_C(15000000)
 #define MAX_FRAGMENT_COUNT MEDDISP_BLE_MAX_REASSEMBLED_MESSAGE
 
 static const char *TAG = "ble_secure";
@@ -56,11 +57,22 @@ static bool reassembly_active;
 static bool transmit_pending;
 static bool transport_started;
 static bool handshake_established;
+static esp_timer_handle_t handshake_timer;
 
 static int gatt_access(uint16_t connection_handle, uint16_t attribute_handle,
                        struct ble_gatt_access_ctxt *context, void *argument);
 static int start_advertising(void);
 static int gap_event(struct ble_gap_event *event, void *argument);
+
+static void handshake_timeout(void *argument)
+{
+    (void)argument;
+    if ((active_connection != BLE_HS_CONN_HANDLE_NONE) &&
+        !handshake_established)
+    {
+        (void)ble_gap_terminate(active_connection, BLE_ERR_REM_USER_CONN_TERM);
+    }
+}
 
 static void reassembly_timeout(void *argument)
 {
@@ -102,6 +114,10 @@ static void close_connection(void)
     active_connection = BLE_HS_CONN_HANDLE_NONE;
     handshake_established = false;
     transmit_pending = false;
+    if (handshake_timer != NULL)
+    {
+        (void)esp_timer_stop(handshake_timer);
+    }
     clear_reassembly();
     secure_channel_clear(&secure_channel);
     (void)memset(&secure_channel, 0, sizeof(secure_channel));
@@ -216,6 +232,10 @@ static int process_complete_message(const uint8_t *data, size_t size)
         if (established)
         {
             handshake_established = true;
+            if (handshake_timer != NULL)
+            {
+                (void)esp_timer_stop(handshake_timer);
+            }
             ESP_LOGI(TAG, "BLE secure-channel handshake established");
         }
         return 0;
@@ -435,6 +455,11 @@ static int gap_event(struct ble_gap_event *event, void *argument)
             {
                 close_connection();
             }
+            else if (esp_timer_start_once(handshake_timer,
+                                          (uint64_t)HANDSHAKE_TIMEOUT_US) != ESP_OK)
+            {
+                close_connection();
+            }
             break;
         case BLE_GAP_EVENT_NOTIFY_TX:
             if ((event->notify_tx.conn_handle == active_connection) &&
@@ -455,6 +480,10 @@ static int gap_event(struct ble_gap_event *event, void *argument)
             {
                 active_connection = BLE_HS_CONN_HANDLE_NONE;
                 handshake_established = false;
+                if (handshake_timer != NULL)
+                {
+                    (void)esp_timer_stop(handshake_timer);
+                }
                 clear_reassembly();
                 secure_channel_clear(&secure_channel);
                 (void)memset(&secure_channel, 0, sizeof(secure_channel));
@@ -507,6 +536,12 @@ int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
                                void *context)
 {
     int result;
+    size_t index;
+    bool has_nonzero_psk = false;
+    const esp_timer_create_args_t handshake_timer_args = {
+        .callback = handshake_timeout,
+        .name = "ble_handshake",
+    };
     const esp_timer_create_args_t timer_args = {
         .callback = reassembly_timeout,
         .name = "ble_reassembly",
@@ -516,14 +551,33 @@ int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
     {
         return -1;
     }
+    for (index = 0U; index < SECURE_CHANNEL_PSK_SIZE; ++index)
+    {
+        if (psk[index] != 0U)
+        {
+            has_nonzero_psk = true;
+        }
+    }
+    if (!has_nonzero_psk)
+    {
+        return -1;
+    }
     (void)memcpy(commissioned_psk, psk, sizeof(commissioned_psk));
     message_callback = on_message;
     message_context = context;
     (void)ble_att_set_preferred_mtu(MEDDISP_BLE_FRAGMENT_HEADER_SIZE +
                                     MEDDISP_BLE_MAX_FRAGMENT_PAYLOAD + 3U);
+    result = esp_timer_create(&handshake_timer_args, &handshake_timer);
+    if (result != ESP_OK)
+    {
+        mbedtls_platform_zeroize(commissioned_psk, sizeof(commissioned_psk));
+        return -1;
+    }
     result = esp_timer_create(&timer_args, &reassembly_timer);
     if (result != ESP_OK)
     {
+        (void)esp_timer_delete(handshake_timer);
+        handshake_timer = NULL;
         mbedtls_platform_zeroize(commissioned_psk, sizeof(commissioned_psk));
         return -1;
     }
@@ -531,7 +585,9 @@ int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
     if (result != 0)
     {
         (void)esp_timer_delete(reassembly_timer);
+        (void)esp_timer_delete(handshake_timer);
         reassembly_timer = NULL;
+        handshake_timer = NULL;
         mbedtls_platform_zeroize(commissioned_psk, sizeof(commissioned_psk));
         return -1;
     }
@@ -546,7 +602,12 @@ int ble_secure_transport_start(const uint8_t psk[SECURE_CHANNEL_PSK_SIZE],
         {
             (void)esp_timer_delete(reassembly_timer);
         }
+        if (handshake_timer != NULL)
+        {
+            (void)esp_timer_delete(handshake_timer);
+        }
         reassembly_timer = NULL;
+        handshake_timer = NULL;
         nimble_port_deinit();
         mbedtls_platform_zeroize(commissioned_psk, sizeof(commissioned_psk));
         return -1;

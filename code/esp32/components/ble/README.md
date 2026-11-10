@@ -17,7 +17,9 @@ application explicitly supplies its commissioned 32-byte PSK. It advertises
 the shared service/characteristic, permits one central, requires notification
 subscription and a negotiated MTU large enough for 180-byte fragments, and
 closes the connection on malformed, out-of-order, timed-out, replayed, or
-unauthenticated input. `ble_secure_transport_send()` encrypts typed messages
+unauthenticated input. The transport rejects an all-zero PSK and disconnects
+if the secure-channel handshake does not finish within 15 seconds.
+`ble_secure_transport_send()` encrypts typed messages
 and emits ordered GATT fragments; call it from the NimBLE host task, such as
 inside the authenticated message callback.
 

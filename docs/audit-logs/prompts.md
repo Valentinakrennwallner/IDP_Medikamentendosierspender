@@ -17,3 +17,7 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - add Telegram communication using the Telegram HTTPS API as per the specification
 - implement heartbeat logic
 - implement ble communication
+- validate that there are comments to each function explaining the purpose, and if applicable reference the documentation as "Design Document" which chapter and section numbering as per the structure in start.pdf
+- remember instructions where to find the speciication and how to reference the specification.
+- remember instructions that code must follow MISRA C rules
+- remember instructions about commenting functions

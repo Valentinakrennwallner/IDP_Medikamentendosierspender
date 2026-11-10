@@ -39,11 +39,19 @@ typedef struct
     uint64_t receive_sequence;
 } secure_channel_state_t;
 
+/*
+ * Return the private state associated with a public secure-channel handle.
+ * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
+ */
 static secure_channel_state_t *state_of(secure_channel_t *channel)
 {
     return (secure_channel_state_t *)channel->backend_state;
 }
 
+/*
+ * Encode a 64-bit protocol value in network byte order.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1-4.3.
+ */
 static void put_u64(uint8_t *p, uint64_t v)
 {
     unsigned int i;
@@ -54,6 +62,10 @@ static void put_u64(uint8_t *p, uint64_t v)
     }
 }
 
+/*
+ * Decode a 64-bit protocol value from network byte order.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1-4.3.
+ */
 static uint64_t get_u64(const uint8_t *p)
 {
     uint64_t value = 0U;
@@ -65,6 +77,10 @@ static uint64_t get_u64(const uint8_t *p)
     return value;
 }
 
+/*
+ * Encode a 32-bit protocol value in network byte order.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1-4.3.
+ */
 static void put_u32(uint8_t *p, uint32_t v)
 {
     p[0] = (uint8_t)(v >> 24U);
@@ -73,12 +89,20 @@ static void put_u32(uint8_t *p, uint32_t v)
     p[3] = (uint8_t)v;
 }
 
+/*
+ * Decode a 32-bit protocol value from network byte order.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1-4.3.
+ */
 static uint32_t get_u32(const uint8_t *p)
 {
     return ((uint32_t)p[0] << 24U) | ((uint32_t)p[1] << 16U) |
            ((uint32_t)p[2] << 8U) | (uint32_t)p[3];
 }
 
+/*
+ * Compare handshake authentication tags without data-dependent early exit.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static int constant_time_equal(const uint8_t *left, const uint8_t *right, size_t size)
 {
     volatile uint8_t difference = 0U;
@@ -90,6 +114,10 @@ static int constant_time_equal(const uint8_t *left, const uint8_t *right, size_t
     return difference == 0U;
 }
 
+/*
+ * Supply cryptographic random bytes from the ESP32 hardware RNG.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static int random_bytes(void *context, unsigned char *output, size_t size)
 {
     (void)context;
@@ -97,12 +125,20 @@ static int random_bytes(void *context, unsigned char *output, size_t size)
     return 0;
 }
 
+/*
+ * Accept only defined secure-channel application message types.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
 static int valid_type(uint8_t type)
 {
     return type >= (uint8_t)SECURE_CHANNEL_MESSAGE_STARTUP &&
            type <= (uint8_t)SECURE_CHANNEL_MESSAGE_FAULT;
 }
 
+/*
+ * Authenticate handshake transcript data with HMAC-SHA-256 and the PSK.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static int hmac_sha256(const uint8_t *key, size_t key_size,
                        const uint8_t *data, size_t data_size, uint8_t out[32])
 {
@@ -111,6 +147,10 @@ static int hmac_sha256(const uint8_t *key, size_t key_size,
         mbedtls_md_hmac(md, key, key_size, data, data_size, out);
 }
 
+/*
+ * Append bounded handshake bytes to the transcript used for key derivation.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static int append_transcript(secure_channel_state_t *s, const uint8_t *data, size_t size)
 {
     if ((size > sizeof(s->transcript) - s->transcript_size) || (data == NULL))
@@ -122,6 +162,10 @@ static int append_transcript(secure_channel_state_t *s, const uint8_t *data, siz
     return 0;
 }
 
+/*
+ * Derive directional AES-GCM key material from P-256 ECDH and the PSK.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1, 4.7, and 4.9.
+ */
 static int derive_key(secure_channel_state_t *s)
 {
     uint8_t shared[MBEDTLS_ECP_MAX_BYTES];
@@ -173,6 +217,10 @@ cleanup_mpi:
     goto cleanup;
 }
 
+/*
+ * Generate and export an ephemeral P-256 public key.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static int make_keypair(secure_channel_state_t *s, uint8_t public_out[65])
 {
     size_t written = 0U;
@@ -188,6 +236,11 @@ static int make_keypair(secure_channel_state_t *s, uint8_t public_out[65])
     return 0;
 }
 
+/*
+ * Initialize the ESP32 secure-channel role and retain its commissioned PSK.
+ * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.2,
+ * Requirements 4.1 and 4.7-4.9.
+ */
 int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
                         const uint8_t psk[SECURE_CHANNEL_PSK_SIZE])
 {
@@ -220,6 +273,10 @@ int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
     return 0;
 }
 
+/*
+ * Emit the client's nonce and ephemeral P-256 public key.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 int secure_channel_start(secure_channel_t *channel, uint8_t *output,
                          size_t output_capacity, size_t *output_size)
 {
@@ -250,6 +307,10 @@ int secure_channel_start(secure_channel_t *channel, uint8_t *output,
     return 0;
 }
 
+/*
+ * Authenticate the peer handshake and derive the fresh session key.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7-4.9.
+ */
 int secure_channel_process_handshake(secure_channel_t *channel,
                                      const uint8_t *input, size_t input_size,
                                      uint8_t *output, size_t output_capacity,
@@ -395,6 +456,10 @@ cleanup:
     return result;
 }
 
+/*
+ * Encrypt and authenticate a typed message with AES-256-GCM.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
 int secure_channel_seal(secure_channel_t *channel,
                         secure_channel_message_type_t message_type,
                         const uint8_t *plaintext, size_t plaintext_size,
@@ -450,9 +515,10 @@ int secure_channel_seal(secure_channel_t *channel,
     else
     {
         s->established = false;
-        if ((plaintext != NULL) && (payload_size <= plaintext_capacity))
+        if (output_capacity >= SECURE_CHANNEL_OVERHEAD + plaintext_size)
         {
-            mbedtls_platform_zeroize(plaintext, payload_size);
+            mbedtls_platform_zeroize(
+                output, SECURE_CHANNEL_OVERHEAD + plaintext_size);
         }
     }
     mbedtls_gcm_free(&gcm);
@@ -460,6 +526,10 @@ int secure_channel_seal(secure_channel_t *channel,
     return result;
 }
 
+/*
+ * Authenticate and decrypt a message, accepting only a fresh sequence number.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
+ */
 int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t input_size,
                         secure_channel_message_type_t *message_type, uint8_t *plaintext,
                         size_t plaintext_capacity, size_t *plaintext_size)
@@ -483,6 +553,10 @@ int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t 
         (input_size < SECURE_CHANNEL_OVERHEAD) || (memcmp(input, "MDP1", 4U) != 0) ||
         (input[4] != 1U) || !valid_type(input[5]) || (input[6] != 0U) || (input[7] != 0U))
     {
+        if ((s != NULL) && (s->magic == SESSION_MAGIC))
+        {
+            s->established = false;
+        }
         return -1;
     }
     sequence = get_u64(&input[8]);
@@ -492,6 +566,11 @@ int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t 
         ((size_t)payload_size + SECURE_CHANNEL_OVERHEAD != input_size) ||
         (plaintext_capacity < payload_size) || ((plaintext == NULL) && (payload_size != 0U)))
     {
+        if ((plaintext != NULL) && (payload_size <= plaintext_capacity))
+        {
+            mbedtls_platform_zeroize(plaintext, payload_size);
+        }
+        s->established = false;
         return -1;
     }
     (void)memcpy(nonce, (s->role == SECURE_CHANNEL_ROLE_CLIENT) ?
@@ -511,11 +590,23 @@ int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t 
         *plaintext_size = payload_size;
         result = 0;
     }
+    else
+    {
+        if ((plaintext != NULL) && (payload_size <= plaintext_capacity))
+        {
+            mbedtls_platform_zeroize(plaintext, payload_size);
+        }
+        s->established = false;
+    }
     mbedtls_gcm_free(&gcm);
     mbedtls_platform_zeroize(nonce, sizeof(nonce));
     return result;
 }
 
+/*
+ * Erase ephemeral keys, PSK, and session keys before releasing channel state.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7-4.9.
+ */
 void secure_channel_clear(secure_channel_t *channel)
 {
     secure_channel_state_t *s;

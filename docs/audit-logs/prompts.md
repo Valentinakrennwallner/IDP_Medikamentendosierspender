@@ -21,3 +21,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - remember instructions where to find the speciication and how to reference the specification.
 - remember instructions that code must follow MISRA C rules
 - remember instructions about commenting functions
+- implement key exchange and encryption

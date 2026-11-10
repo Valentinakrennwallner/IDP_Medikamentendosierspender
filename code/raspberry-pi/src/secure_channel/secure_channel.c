@@ -340,7 +340,7 @@ static bool secure_channel_handshake_prefix_valid(const uint8_t *input,
 
 /*
  * Initialize a role-specific secure session with the commissioned PSK.
- * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
+ * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.2,
  * Requirements 4.1 and 4.7–4.9.
  */
 int secure_channel_init(secure_channel_t *channel,
@@ -371,7 +371,7 @@ int secure_channel_init(secure_channel_t *channel,
 
 /*
  * Start the Pi-client handshake by emitting an ephemeral P-256 key and nonce.
- * Design Document, Chapter 6, Section 6.1, Requirements 4.1 and 4.7–4.9.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7–4.9.
  */
 int secure_channel_start(secure_channel_t *channel,
                          uint8_t *output,
@@ -410,7 +410,7 @@ int secure_channel_start(secure_channel_t *channel,
 
 /*
  * Authenticate the peer transcript and derive the new session key. Design
- * Document, Chapter 6, Section 6.1, Requirements 4.1 and 4.7–4.9.
+ * Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7–4.9.
  */
 int secure_channel_process_handshake(secure_channel_t *channel,
                                      const uint8_t *input,
@@ -608,7 +608,7 @@ static void secure_channel_make_nonce(
 
 /*
  * Seal one application message using AES-256-GCM and a monotonic sequence.
- * Design Document, Chapter 6, Section 6.1, Requirements 4.2 and 4.3.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
  */
 int secure_channel_seal(secure_channel_t *channel,
                         secure_channel_message_type_t message_type,
@@ -689,7 +689,7 @@ cleanup:
 
 /*
  * Authenticate, decrypt, and reject replayed application messages. Design
- * Document, Chapter 6, Section 6.1, Requirements 4.2 and 4.3.
+ * Document, Chapter 6, Section 6.2, Requirements 4.2 and 4.3.
  */
 int secure_channel_open(secure_channel_t *channel,
                         const uint8_t *input,
@@ -781,7 +781,7 @@ cleanup:
 
 /*
  * Erase ephemeral keys, PSK, and session keys before releasing the channel.
- * Design Document, Chapter 6, Section 6.1, Requirements 4.1 and 4.7–4.9.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7–4.9.
  */
 void secure_channel_clear(secure_channel_t *channel)
 {

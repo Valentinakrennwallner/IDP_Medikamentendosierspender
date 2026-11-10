@@ -1,5 +1,10 @@
 # Shared BLE protocol
 
+The BLE GATT service, fragmentation, ECDHE/PSK handshake, AES-GCM framing,
+and replay-counter contract are defined in [`SECURE_CHANNEL.md`](SECURE_CHANNEL.md).
+The portable API is declared in `include/secure_channel.h`; platform-specific
+cryptography must implement that API without changing the wire format.
+
 `include/startup_message.h` and `src/startup_message.c` define the startup
 schedule/time application payload shared by the Raspberry Pi and ESP32. All
 multi-byte integers use big-endian byte order:

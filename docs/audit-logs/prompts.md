@@ -16,3 +16,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - add functions for setting LED states as required by the specification
 - add Telegram communication using the Telegram HTTPS API as per the specification
 - implement heartbeat logic
+- implement ble communication

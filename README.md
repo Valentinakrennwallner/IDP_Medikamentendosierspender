@@ -17,9 +17,11 @@ for system behavior and safety/security requirements.
 See [Code style](docs/code-style.md) for C formatting, safety, and security
 conventions.
 
-**TODO:** The code files are starter scaffolding, not an operational medication
-dispenser. Safety logic, BLE framing, cryptography, and integration tests must
-be implemented and verified against the specification before hardware use.
+**Not for clinical use:** The repository is still under development. The
+secure BLE wire contract and Raspberry Pi secure-channel implementation are
+present, but dose-safety behavior, complete device integration, hardware
+testing, and independent security review are still required before any use
+with medication.
 
 ## Development software requirements
 
@@ -49,7 +51,7 @@ and Raspberry Pi OS.
 - Raspberry Pi OS or another supported Linux environment with a C11 compiler,
   CMake, and POSIX threads.
 - Development libraries/tools for BlueZ (including its D-Bus API), mbedTLS,
-  OpenSSL, and libcurl built with the OpenSSL TLS backend.
+  OpenSSL 3, and libcurl built with the OpenSSL TLS backend.
 - Build from the repository root:
 
   ```sh

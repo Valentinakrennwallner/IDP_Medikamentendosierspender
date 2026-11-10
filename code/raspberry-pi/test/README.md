@@ -5,6 +5,10 @@ acknowledgements, timeouts, one-time alerting, end-of-day suppression, and
 five-second reconnect intervals. Tests use callbacks and do not require BLE
 hardware.
 
+The secure-channel tests perform a real OpenSSL handshake, verify the PSK,
+exercise protected messages in both directions, and reject replay and
+authentication-tag tampering.
+
 Add tests for schedule validation and target-weight calculation, time-sync
 recovery, notification formatting, and secure protocol handling.
 

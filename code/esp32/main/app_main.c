@@ -9,6 +9,7 @@ void app_main(void)
     esp_err_t result;
 
     ESP_LOGI(TAG, "ESP32 application started");
+    ESP_LOGW(TAG, "BLE secure transport remains disabled until a commissioned PSK is loaded");
 
     result = led_status_init();
     if (result != ESP_OK)

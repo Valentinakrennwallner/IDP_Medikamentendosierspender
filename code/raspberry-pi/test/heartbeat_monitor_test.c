@@ -90,11 +90,43 @@ static int test_day_end_stops_monitoring(void)
     return 0;
 }
 
+/* Verify reachability alerts begin even before the first BLE connection. */
+static int test_startup_timeout_and_recovery(void)
+{
+    heartbeat_monitor_t monitor;
+    monitor_test_context_t context = {0U, 0U, 0U};
+
+    heartbeat_monitor_init(&monitor);
+    if ((heartbeat_monitor_start(&monitor, UINT64_C(0)) != 0) ||
+        (heartbeat_monitor_tick(&monitor, UINT64_C(119999), test_alert,
+                                test_reconnect, &context) != 0) ||
+        (context.alerts != 0U) || (context.reconnects != 0U) ||
+        (heartbeat_monitor_tick(&monitor, UINT64_C(120000), test_alert,
+                                test_reconnect, &context) != 0) ||
+        (context.alerts != 1U) || (context.reconnects != 1U) ||
+        (heartbeat_monitor_tick(&monitor, UINT64_C(125000), test_alert,
+                                test_reconnect, &context) != 0) ||
+        (context.alerts != 1U) || (context.reconnects != 2U) ||
+        (heartbeat_monitor_on_connected(&monitor, UINT64_C(130000)) != 0) ||
+        (heartbeat_monitor_tick(&monitor, UINT64_C(249999), test_alert,
+                                test_reconnect, &context) != 0) ||
+        (context.alerts != 1U) ||
+        (heartbeat_monitor_tick(&monitor, UINT64_C(250000), test_alert,
+                                test_reconnect, &context) != 0) ||
+        (context.alerts != 2U))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
 /* Run gateway heartbeat monitor tests without BLE or Telegram services. */
 int main(void)
 {
     if ((test_timeout_and_reconnect() != 0) ||
-        (test_day_end_stops_monitoring() != 0))
+        (test_day_end_stops_monitoring() != 0) ||
+        (test_startup_timeout_and_recovery() != 0))
     {
         (void)fputs("heartbeat monitor tests failed\n", stderr);
         return EXIT_FAILURE;

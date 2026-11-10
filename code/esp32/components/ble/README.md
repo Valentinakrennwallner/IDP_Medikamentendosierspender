@@ -12,13 +12,29 @@ attempt reconnection every five seconds. Call
 successful reconnection, perform the buffered-result delivery and current-time
 transfer before starting the new heartbeat interval.
 
-The component does not implement the NimBLE transport or secure-channel
-message encoding. Callbacks must send/accept only authenticated messages and
-must preserve protocol sequence-number checks.
+`ble_secure_transport_start()` starts a NimBLE peripheral only after the
+application explicitly supplies its commissioned 32-byte PSK. It advertises
+the shared service/characteristic, permits one central, requires notification
+subscription and a negotiated MTU large enough for 180-byte fragments, and
+closes the connection on malformed, out-of-order, timed-out, replayed, or
+unauthenticated input. `ble_secure_transport_send()` encrypts typed messages
+and emits ordered GATT fragments; call it from the NimBLE host task, such as
+inside the authenticated message callback.
+
+The mbedTLS backend implements the shared P-256 ECDHE/PSK handshake,
+HKDF-SHA-256 derivation, and AES-256-GCM framing in
+`secure_channel_mbedtls.c`. Application startup currently has no commissioned
+key loader, so `app_main()` deliberately does not start advertising. Wire the
+start API only to a trusted provisioning source; do not embed a default key.
+Heartbeat scheduling remains transport-independent and is not wired to the
+transport until the application provides monotonic-clock and autonomous-mode
+callbacks.
 
 The shared `startup_protocol` ESP-IDF component provides the startup
-schedule/time decoder. After AES-GCM authentication succeeds, pass the
-decrypted payload to `ble_startup_receiver_accept_authenticated_payload()`.
-Only use the returned schedule and Unix time when that function succeeds.
-Connect this receiver to the NimBLE write/notification handler as part of the
-BLE transport implementation; never call it with unauthenticated bytes.
+schedule/time decoder. In the authenticated-message callback, pass a
+`SECURE_CHANNEL_MESSAGE_STARTUP` plaintext to
+`ble_startup_receiver_accept_authenticated_payload()` and use the returned
+schedule and Unix time only when that function succeeds. The callback receives
+plaintext only after secure-channel authentication and replay checks.
+The callback must return nonzero for unknown or malformed application
+messages, which closes the connection.

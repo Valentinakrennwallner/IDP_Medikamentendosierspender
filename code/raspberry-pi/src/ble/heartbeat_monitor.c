@@ -20,11 +20,11 @@ void heartbeat_monitor_init(heartbeat_monitor_t *monitor)
 }
 
 /*
- * Begin a fresh monitoring period on an authenticated connection. Design
- * Document, Chapter 6, Section 6.1, Requirements 3.4 and 3.5.
+ * Start the first two-minute reachability window while searching for the
+ * dispenser. Design Document, Chapter 6, Section 6.1, Requirement 3.5.
  */
-int heartbeat_monitor_on_connected(heartbeat_monitor_t *monitor,
-                                   uint64_t monotonic_time_ms)
+int heartbeat_monitor_start(heartbeat_monitor_t *monitor,
+                            uint64_t monotonic_time_ms)
 {
     if (monitor == NULL)
     {
@@ -33,12 +33,28 @@ int heartbeat_monitor_on_connected(heartbeat_monitor_t *monitor,
 
     monitor->last_heartbeat_ms = monotonic_time_ms;
     monitor->last_reconnect_attempt_ms = 0U;
-    monitor->connected = true;
+    monitor->connected = false;
     monitor->monitoring = true;
     monitor->day_ended = false;
     monitor->timed_out = false;
     monitor->reconnect_attempted = false;
     monitor->alert_sent = false;
+    return 0;
+}
+
+/*
+ * Begin a fresh monitoring period on an authenticated connection. Design
+ * Document, Chapter 6, Section 6.1, Requirements 3.4 and 3.5.
+ */
+int heartbeat_monitor_on_connected(heartbeat_monitor_t *monitor,
+                                   uint64_t monotonic_time_ms)
+{
+    if (heartbeat_monitor_start(monitor, monotonic_time_ms) != 0)
+    {
+        return -1;
+    }
+
+    monitor->connected = true;
     return 0;
 }
 

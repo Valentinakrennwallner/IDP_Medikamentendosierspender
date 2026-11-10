@@ -26,6 +26,10 @@ typedef struct
 /* Initialize the gateway heartbeat monitor in an inactive state. */
 void heartbeat_monitor_init(heartbeat_monitor_t *monitor);
 
+/* Begin the startup timeout while discovery/reconnection is in progress. */
+int heartbeat_monitor_start(heartbeat_monitor_t *monitor,
+                            uint64_t monotonic_time_ms);
+
 /* Start monitoring from a newly authenticated BLE connection. */
 int heartbeat_monitor_on_connected(heartbeat_monitor_t *monitor,
                                    uint64_t monotonic_time_ms);

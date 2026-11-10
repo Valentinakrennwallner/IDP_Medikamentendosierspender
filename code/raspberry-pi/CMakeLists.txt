@@ -10,12 +10,16 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
 find_package(CURL REQUIRED)
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL 3.0 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
 
 add_executable(medication_dispenser_gateway
     src/main.c
     src/ble/startup_transfer.c
     src/ble/heartbeat_monitor.c
+    src/ble/bluez_central.c
+    src/secure_channel/secure_channel.c
     src/schedule/schedule.c
     src/time_sync/time_sync.c
     src/notifications/telegram.c
@@ -33,6 +37,7 @@ target_compile_options(medication_dispenser_gateway PRIVATE
 
 target_link_libraries(medication_dispenser_gateway PRIVATE
     Threads::Threads
+    PkgConfig::DBUS
     CURL::libcurl
     OpenSSL::SSL
     OpenSSL::Crypto
@@ -89,6 +94,21 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME heartbeat_client_tests COMMAND heartbeat_client_test)
+
+    add_executable(secure_channel_test
+        test/secure_channel_test.c
+        src/secure_channel/secure_channel.c
+    )
+    target_include_directories(secure_channel_test PRIVATE
+        ../protocol/include
+    )
+    target_compile_options(secure_channel_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(secure_channel_test PRIVATE OpenSSL::Crypto)
+    add_test(NAME secure_channel_tests COMMAND secure_channel_test)
 
     add_executable(telegram_test
         test/telegram_test.c

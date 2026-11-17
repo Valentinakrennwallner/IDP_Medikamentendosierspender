@@ -7,6 +7,8 @@ include(CTest)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+# compile_commands.json provides include paths for the MISRA screening test.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
 find_package(CURL REQUIRED)
@@ -183,6 +185,9 @@ if(BUILD_TESTING)
         NAME misra_c_screening
         COMMAND "${CMAKE_COMMAND}"
             "-DCPPCHECK_EXECUTABLE=cppcheck"
+            "-DDEVICE=raspberry-pi"
+            "-DCOMPILE_COMMANDS=${CMAKE_BINARY_DIR}/compile_commands.json"
+            "-DREPORT_DIR=${CMAKE_BINARY_DIR}"
             -P "${CMAKE_SOURCE_DIR}/../tests/misra/check.cmake"
     )
 endif()

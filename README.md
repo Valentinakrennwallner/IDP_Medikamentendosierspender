@@ -106,16 +106,31 @@ format (`code/protocol/SECURE_CHANNEL.md`) are identical on both devices.
 ### Static analysis
 
 Both device builds register the `misra_c_screening` CTest. Install cppcheck
-with its standard configuration files and MISRA addon available, then run:
+with its standard configuration files and MISRA addon available (Python is
+needed for the addon), build the device project first, then run:
 
 ```sh
 ctest --test-dir code/raspberry-pi/build -R misra_c_screening --output-on-failure
 ctest --test-dir code/esp32/build -R misra_c_screening --output-on-failure
 ```
 
-The ESP32 test command requires an ESP-IDF build directory to have been
-configured. The cppcheck MISRA addon is a preliminary screen, not proof of
-MISRA C compliance; see [Code style](docs/code-style.md).
+The screen (`code/tests/misra/check.cmake`) checks one device at a time: only
+production code of that device and the shared protocol, with the include
+paths from the build's `compile_commands.json`; test code and mocks are
+excluded. Findings are classified with `code/tests/misra/rule_categories.txt`
+(rule numbers and categories only; the MISRA rule texts are not reproduced).
+
+- The test **fails on findings of Mandatory rules** (the assignment requires
+  the mandatory MISRA C rules to be followed).
+- Required and Advisory findings are printed per rule and listed in
+  `<build>/misra_report_<device>.txt`. They are to be fixed or documented as
+  deviations.
+- Rule 17.3 (implicit function declarations) is enforced by the compiler
+  (GCC 14 and later reject implicit declarations) instead of cppcheck, which
+  reports false positives when SDK headers are not fully parsed.
+
+The cppcheck MISRA addon is a preliminary screen covering a subset of the
+rules, not proof of MISRA C compliance; see [Code style](docs/code-style.md).
 
 ## Sample configuration
 

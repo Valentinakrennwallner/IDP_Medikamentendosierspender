@@ -108,6 +108,21 @@ if(BUILD_TESTING)
     target_link_libraries(weight_test PRIVATE m)
     add_test(NAME weight_tests COMMAND weight_test)
 
+    add_executable(dosing_test
+        ../esp32/test/dosing_test.c
+        ../esp32/components/dosing/dosing.c
+        ../protocol/src/startup_message.c
+    )
+    target_include_directories(dosing_test PRIVATE
+        ../protocol/include
+    )
+    target_compile_options(dosing_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME dosing_tests COMMAND dosing_test)
+
     add_executable(secure_channel_test
         test/secure_channel_test.c
         src/secure_channel/secure_channel.c

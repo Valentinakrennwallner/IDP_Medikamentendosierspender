@@ -48,6 +48,23 @@ Do not use ESP-IDF v6.x: it moves to Mbed TLS 4 and the PSA Crypto API, while
 the ESP32 secure channel uses the Mbed TLS 3 functions listed in the Design
 Document (`mbedtls_ecdh_*`, `mbedtls_gcm_*`, `mbedtls_hkdf`).
 
+### Cryptographic libraries
+
+No cryptographic algorithm is implemented in this project; existing
+implementations are used (sources are also named in the file headers):
+
+- ESP32 (`code/esp32/components/ble/secure_channel_mbedtls.c`): Mbed TLS 3 as
+  bundled with ESP-IDF v5.5.6, https://github.com/Mbed-TLS/mbedtls
+- Raspberry Pi (`code/raspberry-pi/src/secure_channel/secure_channel.c`):
+  OpenSSL 3, https://github.com/openssl/openssl
+
+**Deviation from the Design Document (Chapter 2, Section 2.2):** the Design
+Document names mbedTLS for both devices. On the Raspberry Pi, OpenSSL is used
+instead because it is already required there by libcurl for the Telegram HTTPS
+connection (Requirement 4.10), so no second cryptographic library is needed.
+Algorithms (P-256 ECDHE, HKDF-SHA-256, HMAC-SHA-256, AES-256-GCM) and the wire
+format (`code/protocol/SECURE_CHANNEL.md`) are identical on both devices.
+
 ### ESP32 firmware
 
 - ESP-IDF with its ESP32 compiler toolchain, Python environment, and CMake/Ninja

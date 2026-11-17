@@ -1,3 +1,27 @@
+/*
+ * Source of the cryptographic implementation (required by the assignment):
+ * All cryptographic primitives are provided by OpenSSL 3
+ * (https://www.openssl.org, source: https://github.com/openssl/openssl,
+ * Apache License 2.0). No cryptographic algorithm is implemented in this file.
+ *
+ * Used OpenSSL functionality:
+ * - P-256 ECDHE key generation and shared secret: EVP_PKEY_generate(),
+ *   EVP_PKEY_fromdata(), EVP_PKEY_derive()
+ * - HKDF-SHA-256 session key derivation: EVP_KDF ("HKDF")
+ * - HMAC-SHA-256 handshake authentication with the PSK: EVP_MAC ("HMAC")
+ * - SHA-256 transcript hash: EVP_Digest*()
+ * - AES-256-GCM encryption and authentication: EVP_aes_256_gcm(),
+ *   EVP_Encrypt*() / EVP_Decrypt*()
+ * - Random numbers: RAND_bytes(); constant-time comparison: CRYPTO_memcmp();
+ *   key erasure: OPENSSL_cleanse()
+ *
+ * Deviation from the Design Document (Chapter 2, Section 2.2): the Design
+ * Document names mbedTLS for both devices. OpenSSL is used on the Raspberry
+ * Pi because it is already required there by libcurl for the Telegram HTTPS
+ * connection. Algorithms and wire format are identical to the ESP32 mbedTLS
+ * implementation (code/protocol/SECURE_CHANNEL.md).
+ */
+
 #include "../../../protocol/include/secure_channel.h"
 
 #include <limits.h>

@@ -13,6 +13,7 @@ find_package(CURL REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
+pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 
 add_executable(medication_dispenser_gateway
     src/main.c
@@ -22,6 +23,7 @@ add_executable(medication_dispenser_gateway
     src/secure_channel/secure_channel.c
     src/time_sync/time_sync.c
     src/notifications/telegram.c
+    src/schedule/schedule.c
     ../protocol/src/startup_message.c
 )
 target_include_directories(medication_dispenser_gateway PRIVATE
@@ -37,6 +39,8 @@ target_compile_options(medication_dispenser_gateway PRIVATE
 target_link_libraries(medication_dispenser_gateway PRIVATE
     Threads::Threads
     PkgConfig::DBUS
+    PkgConfig::JSONC
+    m
     CURL::libcurl
     OpenSSL::SSL
     OpenSSL::Crypto
@@ -107,6 +111,25 @@ if(BUILD_TESTING)
     )
     target_link_libraries(weight_test PRIVATE m)
     add_test(NAME weight_tests COMMAND weight_test)
+
+    add_executable(schedule_test
+        test/schedule_test.c
+        src/schedule/schedule.c
+        ../protocol/src/startup_message.c
+    )
+    target_include_directories(schedule_test PRIVATE
+        ../protocol/include
+    )
+    target_compile_definitions(schedule_test PRIVATE
+        EXAMPLE_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/device.example.json"
+    )
+    target_compile_options(schedule_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(schedule_test PRIVATE PkgConfig::JSONC m)
+    add_test(NAME schedule_tests COMMAND schedule_test)
 
     add_executable(dosing_test
         ../esp32/test/dosing_test.c

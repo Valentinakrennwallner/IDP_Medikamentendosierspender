@@ -114,6 +114,15 @@ ctest --test-dir code/raspberry-pi/build -R misra_c_screening --output-on-failur
 ctest --test-dir code/esp32/build -R misra_c_screening --output-on-failure
 ```
 
+On Windows (ESP32 build), install cppcheck with the official installer, add
+`C:\Program Files\Cppcheck` to the user `Path`, and run `ctest` from the
+ESP-IDF PowerShell (it provides Python). The Windows installer does not
+include the Python addons: download the source archive of the **same**
+cppcheck version from https://github.com/danmar/cppcheck/releases and copy
+its `addons` folder to `C:\Program Files\Cppcheck\addons`. On Ubuntu, the
+`cppcheck` package already contains the addons. Tested with cppcheck 2.13
+(Ubuntu) and 2.22 (Windows).
+
 The screen (`code/tests/misra/check.cmake`) checks one device at a time: only
 production code of that device and the shared protocol, with the include
 paths from the build's `compile_commands.json`; test code and mocks are

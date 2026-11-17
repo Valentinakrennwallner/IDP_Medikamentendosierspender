@@ -52,11 +52,40 @@ else()
     message(FATAL_ERROR "check.cmake: unknown DEVICE '${DEVICE}' (raspberry-pi or esp32).")
 endif()
 
+# Locate the MISRA addon script of the installed cppcheck. Newer cppcheck
+# versions resolve a relative "script" entry relative to the JSON file, so the
+# absolute path is passed. Override with -DMISRA_SCRIPT=<path> if needed.
+if(NOT IS_ABSOLUTE "${CPPCHECK_EXECUTABLE}")
+    find_program(CPPCHECK_PATH NAMES "${CPPCHECK_EXECUTABLE}")
+    if(NOT CPPCHECK_PATH)
+        message(FATAL_ERROR "cppcheck ('${CPPCHECK_EXECUTABLE}') was not found on PATH.")
+    endif()
+    set(CPPCHECK_EXECUTABLE "${CPPCHECK_PATH}")
+endif()
+if(NOT DEFINED MISRA_SCRIPT)
+    get_filename_component(CPPCHECK_DIR "${CPPCHECK_EXECUTABLE}" REALPATH)
+    get_filename_component(CPPCHECK_DIR "${CPPCHECK_DIR}" DIRECTORY)
+    file(GLOB SYSTEM_ADDON_DIRS LIST_DIRECTORIES true "/usr/lib/*/cppcheck/addons")
+    find_file(MISRA_SCRIPT misra.py
+        PATHS
+            "${CPPCHECK_DIR}/addons"
+            "${CPPCHECK_DIR}/../share/cppcheck/addons"
+            "${CPPCHECK_DIR}/../lib/cppcheck/addons"
+            ${SYSTEM_ADDON_DIRS}
+            "/usr/share/cppcheck/addons"
+        NO_DEFAULT_PATH)
+endif()
+if(NOT MISRA_SCRIPT OR NOT EXISTS "${MISRA_SCRIPT}")
+    message(FATAL_ERROR
+        "MISRA addon (misra.py) not found next to ${CPPCHECK_EXECUTABLE}. "
+        "Pass -DMISRA_SCRIPT=<path to misra.py>.")
+endif()
+
 # The addon receives the rule category file through a JSON addon description.
 set(RULE_CATEGORIES "${CMAKE_CURRENT_LIST_DIR}/rule_categories.txt")
 set(ADDON_JSON "${REPORT_DIR}/misra_addon_${DEVICE}.json")
 file(WRITE "${ADDON_JSON}"
-    "{\"script\": \"misra.py\", \"args\": [\"--rule-texts=${RULE_CATEGORIES}\"]}\n")
+    "{\"script\": \"${MISRA_SCRIPT}\", \"args\": [\"--rule-texts=${RULE_CATEGORIES}\"]}\n")
 
 set(CPPCHECK_ARGUMENTS
     "--project=${COMPILE_COMMANDS}"
@@ -76,6 +105,10 @@ set(CPPCHECK_ARGUMENTS
 foreach(FILTER IN LISTS FILE_FILTERS)
     list(APPEND CPPCHECK_ARGUMENTS "--file-filter=${FILTER}")
 endforeach()
+# Generated headers in the build directory (e.g. ESP-IDF sdkconfig.h with
+# about 1000 CONFIG_ macros) are not project code.
+string(REPLACE "\\" "/" BUILD_DIR_PATTERN "${REPORT_DIR}")
+list(APPEND CPPCHECK_ARGUMENTS "--suppress=*:${BUILD_DIR_PATTERN}/*")
 if(DEFINED EXCLUDE_HEADERS_DIR AND NOT EXCLUDE_HEADERS_DIR STREQUAL "")
     file(TO_CMAKE_PATH "${EXCLUDE_HEADERS_DIR}" EXCLUDE_HEADERS_DIR)
     list(APPEND CPPCHECK_ARGUMENTS

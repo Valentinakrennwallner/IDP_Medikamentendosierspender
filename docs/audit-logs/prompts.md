@@ -25,3 +25,4 @@ The LLM prompts below were used with Github Copilot standard models (Claude Haik
 - implement time critical weighing function
 - you are an experienced developer of safety critical software. review the functionality that has been implemented already against the specification, eliminate redundant code and reduce complexity where possible (Claude Sonnet 5.5)
 - implement dosing module (table of expected weights, filling check, dose evaluation) with host unit tests, without changing existing code (Claude Opus 5.5)
+- implement schedule module for the Raspberry Pi (load and validate JSON configuration with file permission check, target weights, startup schedule for the ESP32, due check and reminder text) with host unit tests, using json-c (Claude Opus 5.5)

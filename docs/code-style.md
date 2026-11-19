@@ -23,6 +23,9 @@ may differ; keep any deviation local and consistent with the relevant SDK API.
   target SDK and documented at the use site.
 - Follow MISRA C as the project safety baseline. Document and justify any
   deviation; a clean build or formatter run is not proof of MISRA compliance.
+  Record each deviation in [MISRA deviations](misra-deviations.md) and add the
+  rule to `code/tests/misra/deviated_rules.cmake`; only advisory rules may be
+  deviated this way.
 - Use fixed-width integer types for protocol fields and hardware values where
   their width matters. Check conversions, bounds, and arithmetic overflow.
 - Validate all external input, sensor values, configuration, and decoded
@@ -56,3 +59,6 @@ may differ; keep any deviation local and consistent with the relevant SDK API.
   The addon checks only a subset of MISRA C rules and does not establish
   project compliance; formally claiming compliance requires a suitable
   qualified toolchain, documented deviations, and review of its results.
+  The screening skips only the rules in `code/tests/misra/deviated_rules.cmake`.
+  `ctest -R misra_deviation_list` checks that list against
+  [MISRA deviations](misra-deviations.md) and does not need cppcheck.

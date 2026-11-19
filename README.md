@@ -73,6 +73,15 @@ The ESP32 test command requires an ESP-IDF build directory to have been
 configured. The cppcheck MISRA addon is a preliminary screen, not proof of
 MISRA C compliance; see [Code style](docs/code-style.md).
 
+The screening skips only the advisory rules recorded in
+[MISRA deviations](docs/misra-deviations.md), which also lists the findings
+that are still open. The `misra_deviation_list` CTest needs no cppcheck and
+checks that the skipped rules and the recorded deviations match:
+
+```sh
+ctest --test-dir code/raspberry-pi/build -R misra_deviation_list --output-on-failure
+```
+
 ## Sample configuration
 
 `code/raspberry-pi/config/device.example.json` illustrates the

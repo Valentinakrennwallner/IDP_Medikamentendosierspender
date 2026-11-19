@@ -10,6 +10,10 @@ if(BUILD_TESTING)
         NAME misra_c_screening
         COMMAND "${CMAKE_COMMAND}"
             "-DCPPCHECK_EXECUTABLE=cppcheck"
+            "-DDEVICE=esp32"
+            "-DCOMPILE_COMMANDS=${CMAKE_BINARY_DIR}/compile_commands.json"
+            "-DREPORT_DIR=${CMAKE_BINARY_DIR}"
+            "-DEXCLUDE_HEADERS_DIR=$ENV{IDF_PATH}"
             -P "${CMAKE_SOURCE_DIR}/../tests/misra/check.cmake"
     )
 

@@ -1,3 +1,24 @@
+/*
+ * Source of the cryptographic implementation (required by the assignment):
+ * All cryptographic primitives are provided by Mbed TLS 3, as bundled with
+ * ESP-IDF v5.5 (https://www.trustedfirmware.org/projects/mbed-tls/, source:
+ * https://github.com/Mbed-TLS/mbedtls, Apache License 2.0; ESP-IDF component:
+ * https://github.com/espressif/esp-idf/tree/v5.5.6/components/mbedtls).
+ * No cryptographic algorithm is implemented in this file.
+ *
+ * Used Mbed TLS functionality:
+ * - P-256 ECDHE key generation and shared secret: mbedtls_ecp_gen_keypair(),
+ *   mbedtls_ecp_check_pubkey(), mbedtls_ecdh_compute_shared()
+ * - HKDF-SHA-256 session key derivation: mbedtls_hkdf()
+ * - HMAC-SHA-256 handshake authentication with the PSK: mbedtls_md_hmac()
+ * - SHA-256 transcript hash: mbedtls_md()
+ * - AES-256-GCM encryption and authentication: mbedtls_gcm_crypt_and_tag(),
+ *   mbedtls_gcm_auth_decrypt()
+ * - Key erasure: mbedtls_platform_zeroize()
+ * Random numbers come from the ESP32 hardware RNG via esp_fill_random()
+ * (ESP-IDF, https://github.com/espressif/esp-idf).
+ */
+
 #include "secure_channel.h"
 
 #include <stdlib.h>

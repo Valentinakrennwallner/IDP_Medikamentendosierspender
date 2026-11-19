@@ -12,4 +12,10 @@ if(BUILD_TESTING)
             "-DCPPCHECK_EXECUTABLE=cppcheck"
             -P "${CMAKE_SOURCE_DIR}/../tests/misra/check.cmake"
     )
+
+    add_test(
+        NAME misra_deviation_list
+        COMMAND "${CMAKE_COMMAND}"
+            -P "${CMAKE_SOURCE_DIR}/../tests/misra/check_deviations.cmake"
+    )
 endif()

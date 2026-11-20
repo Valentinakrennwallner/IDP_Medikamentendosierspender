@@ -55,9 +55,71 @@ failure closes the BLE connection; callers must not pass the payload onward.
 
 Application message types `2` (heartbeat), `3` (acknowledgement), and `5`
 (day-end) have empty plaintext. Type `1` contains the startup payload defined
-in `README.md`; types `4` (result) and `6` (fault) are reserved for the
-documented dose-result and fault encodings. An unknown or malformed
-application payload is rejected by the application dispatcher.
+in `README.md`; types `4` (result) and `6` (fault) carry the report payloads
+defined below. An unknown or malformed application payload is rejected by the
+application dispatcher.
+
+## Result and fault payloads
+
+Both are sent by the ESP32 only, are exactly 5 bytes (`REPORT_MESSAGE_SIZE`)
+and contain no weights, times, medication names or doses. Declarations are in
+`include/report_message.h`.
+
+| Byte | RESULT (type `4`) | FAULT (type `6`) |
+|---|---|---|
+| 0 | version `1` | version `1` |
+| 1 | type `4` | type `6` |
+| 2 | report sequence number | report sequence number |
+| 3 | status `1`–`5` | status `6`–`8` |
+| 4 | intake index | fault state |
+
+Status values (one numbering for both types, `0` is invalid):
+
+| Value | Status | Type |
+|---|---|---|
+| 1 | taken | RESULT |
+| 2 | not yet taken | RESULT |
+| 3 | wrong amount (red or blue LED) | RESULT |
+| 4 | missed (including the end-of-day check) | RESULT |
+| 5 | unscheduled removal | RESULT |
+| 6 | filling error | FAULT |
+| 7 | sensor fault | FAULT |
+| 8 | no time (connected, but no valid startup message) | FAULT |
+
+The intake index is the 0-based position of the intake in today's schedule
+(startup message entry order), `0`–`15` (`REPORT_MESSAGE_MAX_INTAKES` = 16).
+Status `5` always carries `0xFF`, and only status `5` may: a removal outside
+an intake window is not attributed to a dose. The Raspberry Pi maps the index
+to medication names locally and must additionally reject an index that is not
+below the entry count of the schedule it sent. The fault state is `1` when the
+fault starts and `0` when it is cleared (sensor delivers valid values again,
+filling correct again).
+
+The decoder rejects: a length other than 5, a version other than `1`, a type
+byte that differs from the protected header's message type, a status outside
+`1`–`8` or of the other message type, an invalid intake index, and a fault
+state other than `0` or `1`. A later layout change increments the version;
+version-1 receivers reject it.
+
+### Report sequence number
+
+RESULT and FAULT share one 8-bit counter on the ESP32, independent of the
+secure-channel sequence number, so that buffered reports resent after a
+reconnect can be recognised. The first report after ESP32 start-up carries
+`0`; later reports count `1`–`255` and wrap from `255` to `1` (never back to
+`0`). Resending a buffered report keeps its number.
+
+Receiver rule: a report with number `0` is always accepted and becomes the
+last accepted number (the ESP32 has restarted). For numbers `1`–`255`, with
+`last` the last accepted number, the Pi computes
+`d = (seq − last + 255) mod 255` when `last` is non-zero, or `d = seq` when
+`last` is `0`; it accepts the report if `1 ≤ d ≤ 127` and drops it as a
+duplicate otherwise. Accepted reports update `last`. Therefore the ESP32 must
+never hold more than `REPORT_MESSAGE_MAX_PENDING` (127) unsent reports.
+
+Known edge case: if the report with number `0` is resent after a reconnect,
+the Pi accepts it twice. This can only cause one duplicate warning, never a
+lost one, which is the safe direction for this device.
 
 ## GATT fragmentation
 

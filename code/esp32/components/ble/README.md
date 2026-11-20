@@ -48,3 +48,9 @@ schedule and Unix time only when that function succeeds. The callback receives
 plaintext only after secure-channel authentication and replay checks.
 The callback must return nonzero for unknown or malformed application
 messages, which closes the connection.
+
+The same component also provides the result (type 4) and fault (type 6)
+encoders in `report_message.h` (format in `code/protocol/SECURE_CHANNEL.md`).
+They are not yet called by this component; sending results/faults, the
+report sequence counter, and the result buffer of autonomous mode (at most
+`REPORT_MESSAGE_MAX_PENDING` unsent reports) are still to be wired in.

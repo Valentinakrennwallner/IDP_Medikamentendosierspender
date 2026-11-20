@@ -148,6 +148,20 @@ if(BUILD_TESTING)
     )
     add_test(NAME dosing_tests COMMAND dosing_test)
 
+    add_executable(report_message_test
+        test/report_message_test.c
+        ../protocol/src/report_message.c
+    )
+    target_include_directories(report_message_test PRIVATE
+        ../protocol/include
+    )
+    target_compile_options(report_message_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME report_message_tests COMMAND report_message_test)
+
     add_executable(secure_channel_test
         test/secure_channel_test.c
         src/secure_channel/secure_channel.c

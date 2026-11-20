@@ -30,3 +30,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Fix MISRA screening script after merge b4ad4aa, keep per-device version of check.cmake (Claude Code, Claude Opus 5.5)
 - Add host interop ctest for the OpenSSL and mbedTLS secure channel backends (Claude Code, Claude Opus 5.5)
 - Replace calloc/free in both secure_channel backends with a static session pool (MISRA 21.3) (Claude Code, Claude Opus 5.5)
+- Add RESULT (4) and FAULT (6) report payloads in code/protocol (5-byte encoding, status enum, intake index, report sequence number) with host tests (Claude Code, Claude Opus 5.5)

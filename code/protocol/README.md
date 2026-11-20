@@ -27,5 +27,14 @@ responsible for transporting/reassembling the payload if the negotiated
 characteristic MTU requires fragmentation. Do not send this message over an
 unauthenticated connection.
 
+`include/report_message.h` and `src/report_message.c` define the fixed-size
+(5-byte) result (type `4`) and fault (type `6`) payloads sent from the ESP32
+to the Raspberry Pi: version, type, report sequence number, status, and the
+intake index (result) or fault state (fault). They contain no weights or
+times. The byte layout, status values, validation, and the duplicate rule for
+the report sequence number are specified in
+[`SECURE_CHANNEL.md`](SECURE_CHANNEL.md#result-and-fault-payloads). Host tests:
+`code/raspberry-pi/test/report_message_test.c` (`report_message_tests`).
+
 Add cross-device test vectors for this format, including malformed lengths,
 unsupported versions/types, invalid times, and replay handling.

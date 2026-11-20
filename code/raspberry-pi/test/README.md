@@ -29,6 +29,13 @@ with a CMake warning when it is missing. It keeps the production pool size of
 full handshake works again after `secure_channel_clear()`. It does not replace an
 interoperability check on the real hardware.
 
+`report_message_tests` (`report_message_test.c`) cover the shared result and
+fault payloads (`../../protocol/src/report_message.c`): exact byte layout and
+round trip of every status, intake index `0xFF` only for an unscheduled
+removal, fault start/clear, rejection of wrong length, version, type, status,
+index and fault state, and that `DOSING_MAX_INTAKES` of the ESP32 does not
+exceed `REPORT_MESSAGE_MAX_INTAKES`.
+
 The startup-transfer tests cover the schedule/time payload, rejection of
 invalid schedules or unsynchronized time, and the size limit of one protected
 message. The HX711 weighing tests live in `../../esp32/test`.

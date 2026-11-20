@@ -26,6 +26,20 @@ may differ; keep any deviation local and consistent with the relevant SDK API.
   Record each deviation in [MISRA deviations](misra-deviations.md) and add the
   rule to `code/tests/misra/deviated_rules.cmake`; only advisory rules may be
   deviated this way.
+- Required rules follow a separate process based on MISRA Compliance:2020.
+  Mandatory rules are never deviated. A Required rule may only be deviated
+  with a formal record in [MISRA deviations](misra-deviations.md), headed
+  `## Required deviation: Rule N.M - <title>`, that states:
+  - the rationale (why compliance is not possible or not reasonable);
+  - the scope, limited to named files (and the device);
+  - a risk assessment and the mitigation that keeps the risk acceptable;
+  - the approval by the group (names and date).
+  Required deviations are **not** added to
+  `code/tests/misra/deviated_rules.cmake`: their findings stay visible in
+  the screening report, and a finding outside the recorded scope is a
+  violation. A new file that needs the rule requires an updated record.
+  `ctest -R misra_deviation_list` checks the record fields and that no
+  Required or Mandatory rule is suppressed.
 - Use fixed-width integer types for protocol fields and hardware values where
   their width matters. Check conversions, bounds, and arithmetic overflow.
 - Validate all external input, sensor values, configuration, and decoded

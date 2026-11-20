@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(medication_dispenser_gateway C)
+# PROJECT_VERSION is the gateway software version printed in the start-up
+# log message (Design Document, Chapter 6, Section 6.3, Requirement 5.3).
+project(medication_dispenser_gateway VERSION 0.1.0 LANGUAGES C)
 
 include(CTest)
 
@@ -17,6 +19,13 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
 pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 
+# The logging thread lowers itself to SCHED_IDLE, a Linux extension of
+# <sched.h>. Passed here instead of #define in the source (MISRA C:2012
+# Rule 21.1).
+set_source_files_properties(src/logging/logging.c
+    PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE
+)
+
 add_executable(medication_dispenser_gateway
     src/main.c
     src/ble/startup_transfer.c
@@ -27,11 +36,15 @@ add_executable(medication_dispenser_gateway
     src/time_sync/time_sync.c
     src/notifications/telegram.c
     src/schedule/schedule.c
+    src/logging/logging.c
     ../protocol/src/startup_message.c
     ../protocol/src/report_message.c
 )
 target_include_directories(medication_dispenser_gateway PRIVATE
     ../protocol/include
+)
+target_compile_definitions(medication_dispenser_gateway PRIVATE
+    GATEWAY_SOFTWARE_VERSION="${PROJECT_VERSION}"
 )
 
 target_compile_options(medication_dispenser_gateway PRIVATE
@@ -61,6 +74,23 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME time_sync_tests COMMAND time_sync_test)
+
+    add_executable(logging_test
+        test/logging_test.c
+        src/logging/logging.c
+    )
+    target_compile_definitions(logging_test PRIVATE
+        GATEWAY_SOFTWARE_VERSION="${PROJECT_VERSION}"
+    )
+    target_compile_options(logging_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(logging_test PRIVATE Threads::Threads)
+    add_test(NAME logging_tests COMMAND logging_test)
+    # The test only uses bounded waits; the timeout is a second safety net.
+    set_tests_properties(logging_tests PROPERTIES TIMEOUT 60)
 
     add_executable(startup_transfer_test
         test/startup_transfer_test.c

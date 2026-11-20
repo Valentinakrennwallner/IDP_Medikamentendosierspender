@@ -58,3 +58,13 @@ The `telegram_tests` target covers invalid credentials/arguments and refusal
 to send when no trusted certificate time is available. It does not contact the
 live Telegram service; end-to-end notification checks require a controlled
 test bot and must never use real medication data.
+
+`logging_tests` (`logging_test.c`) use a fake terminal output: line format
+(UTC timestamp, level, module, code) and the start-up message with the
+software version, every health data filter rule (digits, `%`, control
+characters, length, module names), that callers can fill the whole queue
+while `write()` is blocked, that a message logged from inside `write()` is
+accepted, drop counting and the drop report, that an output failure switches
+logging off, that the start-up message is always the first line while four
+threads log at once, and the init/shutdown lifecycle. Every wait is bounded,
+and ctest adds a 60 s timeout.

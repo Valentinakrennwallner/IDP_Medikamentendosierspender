@@ -14,7 +14,8 @@ before connecting it to a dispenser:
 - `time_sync`: startup/hourly sync policy, failure recovery, and last-valid-time
   persistence. The gateway must provide callbacks connected to the host NTP
   service and Telegram alert delivery.
-- `ble`: BlueZ transport, heartbeats, and reconnection.
+- `ble`: BlueZ transport, heartbeats, reconnection, and dispatch of
+  result/fault/day-end reports.
 - `secure_channel`: the gateway half of the authenticated BLE protocol.
 - `notifications`: Telegram reminders and fault alerts over verified HTTPS;
   requires libcurl with its OpenSSL backend and OpenSSL development headers.

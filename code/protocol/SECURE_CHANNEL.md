@@ -110,16 +110,41 @@ reconnect can be recognised. The first report after ESP32 start-up carries
 `0`). Resending a buffered report keeps its number.
 
 Receiver rule: a report with number `0` is always accepted and becomes the
-last accepted number (the ESP32 has restarted). For numbers `1`–`255`, with
+last accepted number (the ESP32 has restarted). The first report the Pi
+receives after its own start is also always accepted, whatever its number,
+because the Pi has no last accepted number yet (the ESP32 may have kept
+running and counting). For numbers `1`–`255`, with
 `last` the last accepted number, the Pi computes
 `d = (seq − last + 255) mod 255` when `last` is non-zero, or `d = seq` when
 `last` is `0`; it accepts the report if `1 ≤ d ≤ 127` and drops it as a
 duplicate otherwise. Accepted reports update `last`. Therefore the ESP32 must
 never hold more than `REPORT_MESSAGE_MAX_PENDING` (127) unsent reports.
 
-Known edge case: if the report with number `0` is resent after a reconnect,
-the Pi accepts it twice. This can only cause one duplicate warning, never a
-lost one, which is the safe direction for this device.
+Known edge cases: if the report with number `0` is resent after a reconnect,
+the Pi accepts it twice; likewise, a report already handled before a Pi
+restart is accepted again if it is the first one received afterwards. Both
+can only cause one duplicate warning, never a lost one, which is the safe
+direction for this device.
+
+### Receiver dispatch on the Raspberry Pi
+
+A payload that fails decoding, a non-empty day-end message, and any message
+type other than `4`, `5` or `6` reaching the application dispatcher close
+the BLE connection. Duplicates (see above) are dropped without an event.
+
+A RESULT whose intake index is not below the entry count of today's schedule
+that the Pi sent (index other than `0xFF`), and any RESULT received before the
+Pi has sent a schedule, is not treated as malformed: closing the connection
+would make the ESP32 resend the buffered report after every reconnect, and
+dropping it could lose a missed dose. Such a report is accepted (the sequence
+rule applies and updates `last` as usual) and reported as an *unassigned*
+result: the status is passed on, but not attributed to a dose of the
+schedule.
+
+A valid (empty) day-end message ends today's schedule on the Pi: the entry
+count is reset to `0` before the day-end event is reported, so any later
+RESULT is unassigned until the Pi sends the next schedule. The report
+sequence state is not reset by a day-end.
 
 ## GATT fragmentation
 

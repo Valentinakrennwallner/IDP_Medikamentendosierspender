@@ -22,11 +22,13 @@ add_executable(medication_dispenser_gateway
     src/ble/startup_transfer.c
     src/ble/heartbeat_monitor.c
     src/ble/bluez_central.c
+    src/ble/message_dispatch.c
     src/secure_channel/secure_channel.c
     src/time_sync/time_sync.c
     src/notifications/telegram.c
     src/schedule/schedule.c
     ../protocol/src/startup_message.c
+    ../protocol/src/report_message.c
 )
 target_include_directories(medication_dispenser_gateway PRIVATE
     ../protocol/include
@@ -161,6 +163,21 @@ if(BUILD_TESTING)
         -Wpedantic
     )
     add_test(NAME report_message_tests COMMAND report_message_test)
+
+    add_executable(message_dispatch_test
+        test/message_dispatch_test.c
+        src/ble/message_dispatch.c
+        ../protocol/src/report_message.c
+    )
+    target_include_directories(message_dispatch_test PRIVATE
+        ../protocol/include
+    )
+    target_compile_options(message_dispatch_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME message_dispatch_tests COMMAND message_dispatch_test)
 
     add_executable(secure_channel_test
         test/secure_channel_test.c

@@ -36,6 +36,17 @@ removal, fault start/clear, rejection of wrong length, version, type, status,
 index and fault state, and that `DOSING_MAX_INTAKES` of the ESP32 does not
 exceed `REPORT_MESSAGE_MAX_INTAKES`.
 
+`message_dispatch_tests` (`message_dispatch_test.c`) feed fake RESULT, FAULT
+and DAY_END payloads into `message_dispatch_on_message()` with counting
+callbacks: required callbacks and entry-count limit, results within today's
+schedule (including `0xFF`), unassigned results (index not below the entry
+count, or no entry count set) that still update the sequence state, fault
+start/clear, empty and non-empty day-end, entry-count reset on day-end
+with sequence state kept, malformed payloads and unknown types
+returning nonzero without callbacks, and the report sequence rule (first
+report after start, duplicates, distance 127/128, seq `0` reset, wrap from 255
+to 1).
+
 The startup-transfer tests cover the schedule/time payload, rejection of
 invalid schedules or unsynchronized time, and the size limit of one protected
 message. The HX711 weighing tests live in `../../esp32/test`.

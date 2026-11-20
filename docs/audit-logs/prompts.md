@@ -32,3 +32,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Replace calloc/free in both secure_channel backends with a static session pool (MISRA 21.3) (Claude Code, Claude Opus 5.5)
 - Add RESULT (4) and FAULT (6) report payloads in code/protocol (5-byte encoding, status enum, intake index, report sequence number) with host tests (Claude Code, Claude Opus 5.5)
 - Add gateway dispatcher for RESULT/FAULT/DAY_END (report sequence rule, unassigned results, alert callbacks) with host tests (Claude Code, Claude Opus 5.5)
+- Split DOSING_RESULT_MISSED_OR_REMOVED into MISSED, UNSCHEDULED_REMOVAL and UNEXPECTED_INCREASE (sign of the deviation outside a window) with host tests (Claude Code, Claude Opus 5.5)

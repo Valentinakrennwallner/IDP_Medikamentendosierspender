@@ -192,9 +192,12 @@ bool dosing_filling_is_correct(const dosing_table_t *table, int32_t weight_milli
  * First compare with W_after: a match means the dose was taken, also outside
  * an intake window (late intake). Otherwise, inside an intake window W_before
  * means "not yet taken" and any other weight is a wrong amount (blue if the
- * deviation is smaller than one tablet). Outside a window any deviation is a
- * missed dose or an unscheduled removal. After the last window the day-end
- * check of Requirement 1.6 applies.
+ * deviation is smaller than one tablet). Outside a window the sign of the
+ * deviation from W_after decides: a lower weight is an unscheduled removal;
+ * a higher weight is a missed dose if an intake window has already ended
+ * (gap row), or an unexpected increase before the first window (initial
+ * row, the only outside-window row that can be rows[0]). After the last
+ * window the day-end check of Requirement 1.6 applies.
  * Design Document, Chapter 3, Figure 4, and Chapter 6, Section 6.1,
  * Requirements 1.6, 1.8, 2.12 and 2.13.
  */
@@ -254,9 +257,17 @@ int dosing_evaluate(const dosing_table_t *table,
                 *result = DOSING_RESULT_WRONG_AMOUNT;
             }
         }
+        else if (weight_milligrams < row->weight_after_milligrams)
+        {
+            *result = DOSING_RESULT_UNSCHEDULED_REMOVAL;
+        }
+        else if (row == &table->rows[0])
+        {
+            *result = DOSING_RESULT_UNEXPECTED_INCREASE;
+        }
         else
         {
-            *result = DOSING_RESULT_MISSED_OR_REMOVED;
+            *result = DOSING_RESULT_MISSED;
         }
     }
 
@@ -265,12 +276,14 @@ int dosing_evaluate(const dosing_table_t *table,
 
 /*
  * Results that the Raspberry Pi must forward as a Telegram warning.
- * Design Document, Chapter 6, Section 6.1, Requirements 1.6 and 2.13.
+ * Design Document, Chapter 6, Section 6.1, Requirements 1.6, 1.8 and 2.13.
  */
 bool dosing_result_is_deviation(dosing_result_t result)
 {
     return ((result == DOSING_RESULT_WRONG_AMOUNT_SMALL) ||
             (result == DOSING_RESULT_WRONG_AMOUNT) ||
-            (result == DOSING_RESULT_MISSED_OR_REMOVED) ||
+            (result == DOSING_RESULT_MISSED) ||
+            (result == DOSING_RESULT_UNSCHEDULED_REMOVAL) ||
+            (result == DOSING_RESULT_UNEXPECTED_INCREASE) ||
             (result == DOSING_RESULT_DAY_ENDED_MISSED));
 }

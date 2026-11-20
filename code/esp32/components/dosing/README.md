@@ -12,7 +12,13 @@ dependencies, so it is unit-tested on the host (`dosing_tests`).
   (Requirement 2.9).
 - `dosing_evaluate()` compares the measured weight with the row for the
   current time (Requirements 1.6, 1.8, 2.12, 2.13) and returns a result that
-  maps to the LED states of Table 1.
+  maps to the LED states of Table 1. Outside an intake window, a weight that
+  does not correspond to W_after is classified by the sign of the deviation
+  (all three results are red and count as deviations):
+  - below W_after: `DOSING_RESULT_UNSCHEDULED_REMOVAL`;
+  - above W_after after an ended window (gap row): `DOSING_RESULT_MISSED`;
+  - above W_after before the first window (initial row):
+    `DOSING_RESULT_UNEXPECTED_INCREASE`.
 - `dosing_result_is_deviation()` marks results that must be reported to the
   Raspberry Pi as a warning.
 
@@ -33,3 +39,13 @@ only passes plausible measurements (Requirement 2).
   total weight above the 100 g load cell capacity.
 - Before the first intake window, a correctly filled container evaluates as
   "taken" (green), because Requirement 2.12 compares with W_after first.
+- A weight above W_after before the first intake window is reported as
+  `DOSING_RESULT_UNEXPECTED_INCREASE`, not as a removal or a missed dose. The
+  filling check (Requirements 2.9, 2.10) only runs at start-up, so it does not
+  cover an increase during normal operation.
+
+## Known limitations
+
+- The evaluation is stateless (current row and current weight only). An
+  overdose inside an intake window (`DOSING_RESULT_WRONG_AMOUNT`) therefore
+  becomes `DOSING_RESULT_UNSCHEDULED_REMOVAL` once the window has ended.

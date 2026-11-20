@@ -63,13 +63,15 @@ typedef struct
 /* Result of one evaluation and the LED state it maps to (Table 1). */
 typedef enum
 {
-    DOSING_RESULT_TAKEN = 0,          /* LED green */
-    DOSING_RESULT_NOT_YET_TAKEN,      /* LED off, inside an intake window */
-    DOSING_RESULT_WRONG_AMOUNT_SMALL, /* LED blue, deviation < one tablet */
-    DOSING_RESULT_WRONG_AMOUNT,       /* LED red, inside an intake window */
-    DOSING_RESULT_MISSED_OR_REMOVED,  /* LED red, outside an intake window */
-    DOSING_RESULT_DAY_ENDED_OK,       /* LED off, last dose taken */
-    DOSING_RESULT_DAY_ENDED_MISSED    /* LED red, last dose missed */
+    DOSING_RESULT_TAKEN = 0,           /* LED green */
+    DOSING_RESULT_NOT_YET_TAKEN,       /* LED off, inside an intake window */
+    DOSING_RESULT_WRONG_AMOUNT_SMALL,  /* LED blue, deviation < one tablet */
+    DOSING_RESULT_WRONG_AMOUNT,        /* LED red, inside an intake window */
+    DOSING_RESULT_MISSED,             /* LED red, gap after an ended window, W > W_after */
+    DOSING_RESULT_UNSCHEDULED_REMOVAL, /* LED red, outside an intake window, W < W_after */
+    DOSING_RESULT_UNEXPECTED_INCREASE, /* LED red, before the first window, W > W_after */
+    DOSING_RESULT_DAY_ENDED_OK,        /* LED off, last dose taken */
+    DOSING_RESULT_DAY_ENDED_MISSED     /* LED red, last dose missed */
 } dosing_result_t;
 
 /*

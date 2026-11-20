@@ -120,7 +120,7 @@ static int test_inside_intake_window(void)
     return (failures != 0) ? 1 : 0;
 }
 
-/* Requirements 2.12 and 2.13: results outside an intake window. */
+/* Requirements 1.8, 2.12 and 2.13: results outside an intake window. */
 static int test_outside_intake_window(void)
 {
     dosing_table_t table;
@@ -133,13 +133,47 @@ static int test_outside_intake_window(void)
     /* Correctly filled before the first window: W ~ W_after, green. */
     failures += expect_result(&table, HOURS(6), 400, DOSING_RESULT_TAKEN);
     /* Unscheduled removal before the first window: red. */
-    failures += expect_result(&table, HOURS(6), 300, DOSING_RESULT_MISSED_OR_REMOVED);
+    failures += expect_result(&table, HOURS(6), 300, DOSING_RESULT_UNSCHEDULED_REMOVAL);
+    /* Weight increase before the first window (no window has ended): red. */
+    failures += expect_result(&table, HOURS(6), 500, DOSING_RESULT_UNEXPECTED_INCREASE);
+    failures += expect_result(&table, 0U, 400 + DOSING_TOLERANCE_MILLIGRAMS + 1,
+                              DOSING_RESULT_UNEXPECTED_INCREASE);
     /* Dose taken in time, gap afterwards: green. */
     failures += expect_result(&table, HOURS(9), 300, DOSING_RESULT_TAKEN);
     /* Missed dose after the window ended: red. */
-    failures += expect_result(&table, HOURS(9), 400, DOSING_RESULT_MISSED_OR_REMOVED);
+    failures += expect_result(&table, HOURS(9), 400, DOSING_RESULT_MISSED);
+    /* Dose only partly taken in the window, window ended: still missed. */
+    failures += expect_result(&table, HOURS(9), 350, DOSING_RESULT_MISSED);
+    failures += expect_result(&table, HOURS(15), 100 + DOSING_TOLERANCE_MILLIGRAMS + 1,
+                              DOSING_RESULT_MISSED);
     /* Unscheduled removal between windows: red. */
-    failures += expect_result(&table, HOURS(15), 50, DOSING_RESULT_MISSED_OR_REMOVED);
+    failures += expect_result(&table, HOURS(15), 50, DOSING_RESULT_UNSCHEDULED_REMOVAL);
+    failures += expect_result(&table, HOURS(9), 300 - DOSING_TOLERANCE_MILLIGRAMS - 1,
+                              DOSING_RESULT_UNSCHEDULED_REMOVAL);
+    /*
+     * Known limitation: an overdose inside a window is reported as an
+     * unscheduled removal once the window has ended (stateless evaluation).
+     */
+    failures += expect_result(&table, HOURS(7) + MINUTES(30), 200, DOSING_RESULT_WRONG_AMOUNT);
+    failures += expect_result(&table, HOURS(9), 200, DOSING_RESULT_UNSCHEDULED_REMOVAL);
+    return (failures != 0) ? 1 : 0;
+}
+
+/* Without an initial row, a higher weight in the first gap is a missed dose. */
+static int test_missed_without_initial_row(void)
+{
+    static const startup_schedule_entry_t entries[] = {{0U, 100U}, {HOURS(5), 100U}};
+    const startup_daily_schedule_t schedule = {entries, 2U};
+    dosing_table_t table;
+    int failures = 0;
+
+    if ((dosing_table_create(&schedule, &table) != 0) ||
+        (table.rows[0].phase != DOSING_PHASE_INTAKE_WINDOW))
+    {
+        return 1;
+    }
+    failures += expect_result(&table, HOURS(2), 200, DOSING_RESULT_MISSED);
+    failures += expect_result(&table, HOURS(2), 50, DOSING_RESULT_UNSCHEDULED_REMOVAL);
     return (failures != 0) ? 1 : 0;
 }
 
@@ -153,7 +187,7 @@ static int test_late_intake(void)
     {
         return 1;
     }
-    failures += expect_result(&table, HOURS(10), 400, DOSING_RESULT_MISSED_OR_REMOVED);
+    failures += expect_result(&table, HOURS(10), 400, DOSING_RESULT_MISSED);
     failures += expect_result(&table, HOURS(10) + MINUTES(5), 300, DOSING_RESULT_TAKEN);
     return (failures != 0) ? 1 : 0;
 }
@@ -171,7 +205,8 @@ static int test_window_boundaries(void)
     failures += expect_result(&table, HOURS(7) - 1U, 400, DOSING_RESULT_TAKEN);
     failures += expect_result(&table, HOURS(7), 400, DOSING_RESULT_NOT_YET_TAKEN);
     failures += expect_result(&table, HOURS(8) - 1U, 400, DOSING_RESULT_NOT_YET_TAKEN);
-    failures += expect_result(&table, HOURS(8), 400, DOSING_RESULT_MISSED_OR_REMOVED);
+    failures += expect_result(&table, HOURS(8), 400, DOSING_RESULT_MISSED);
+    failures += expect_result(&table, HOURS(8), 200, DOSING_RESULT_UNSCHEDULED_REMOVAL);
     return (failures != 0) ? 1 : 0;
 }
 
@@ -289,7 +324,9 @@ static int test_deviation_classification(void)
         dosing_result_is_deviation(DOSING_RESULT_DAY_ENDED_OK) ||
         (!dosing_result_is_deviation(DOSING_RESULT_WRONG_AMOUNT_SMALL)) ||
         (!dosing_result_is_deviation(DOSING_RESULT_WRONG_AMOUNT)) ||
-        (!dosing_result_is_deviation(DOSING_RESULT_MISSED_OR_REMOVED)) ||
+        (!dosing_result_is_deviation(DOSING_RESULT_MISSED)) ||
+        (!dosing_result_is_deviation(DOSING_RESULT_UNSCHEDULED_REMOVAL)) ||
+        (!dosing_result_is_deviation(DOSING_RESULT_UNEXPECTED_INCREASE)) ||
         (!dosing_result_is_deviation(DOSING_RESULT_DAY_ENDED_MISSED)))
     {
         return 1;
@@ -309,6 +346,7 @@ int main(void)
         {"filling_check", test_filling_check},
         {"inside_intake_window", test_inside_intake_window},
         {"outside_intake_window", test_outside_intake_window},
+        {"missed_without_initial_row", test_missed_without_initial_row},
         {"late_intake", test_late_intake},
         {"window_boundaries", test_window_boundaries},
         {"day_end", test_day_end},

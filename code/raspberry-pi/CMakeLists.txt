@@ -163,6 +163,49 @@ if(BUILD_TESTING)
     target_link_libraries(secure_channel_test PRIVATE OpenSSL::Crypto)
     add_test(NAME secure_channel_tests COMMAND secure_channel_test)
 
+    # OpenSSL (gateway) <-> mbedTLS (ESP32) interoperability test. Needs the
+    # host mbedTLS 3.6 package (libmbedtls-dev); ESP-IDF v5.5 bundles mbedTLS
+    # 3.6 as well. Both backends define the same public functions, so the
+    # mbedTLS backend's functions are renamed to esp32_secure_channel_*.
+    find_package(MbedTLS 3.6 CONFIG QUIET)
+    if(MbedTLS_FOUND AND (MbedTLS_VERSION VERSION_LESS 3.7))
+        add_executable(secure_channel_interop_test
+            test/secure_channel_interop_test.c
+            src/secure_channel/secure_channel.c
+            ../esp32/components/ble/secure_channel_mbedtls.c
+        )
+        target_include_directories(secure_channel_interop_test PRIVATE
+            ../protocol/include
+            ../esp32/test/mocks
+        )
+        set(ESP32_SECURE_CHANNEL_RENAMES
+            secure_channel_init=esp32_secure_channel_init
+            secure_channel_process_handshake=esp32_secure_channel_process_handshake
+            secure_channel_seal=esp32_secure_channel_seal
+            secure_channel_open=esp32_secure_channel_open
+            secure_channel_clear=esp32_secure_channel_clear
+        )
+        set_source_files_properties(
+            ../esp32/components/ble/secure_channel_mbedtls.c
+            PROPERTIES COMPILE_DEFINITIONS "${ESP32_SECURE_CHANNEL_RENAMES}"
+        )
+        target_compile_options(secure_channel_interop_test PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+        target_link_libraries(secure_channel_interop_test PRIVATE
+            OpenSSL::Crypto
+            MbedTLS::mbedcrypto
+        )
+        add_test(NAME secure_channel_interop_tests
+            COMMAND secure_channel_interop_test)
+    else()
+        message(WARNING
+            "mbedTLS 3.6 (libmbedtls-dev) not found: "
+            "secure_channel_interop_tests is not built.")
+    endif()
+
     add_executable(telegram_test
         test/telegram_test.c
         src/notifications/telegram.c

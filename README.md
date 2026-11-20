@@ -94,8 +94,12 @@ format (`code/protocol/SECURE_CHANNEL.md`) are identical on both devices.
 
   ```sh
   sudo apt install git cmake build-essential pkg-config bluez libssl-dev \
-      libcurl4-openssl-dev libdbus-1-dev libjson-c-dev cppcheck
+      libcurl4-openssl-dev libdbus-1-dev libjson-c-dev libmbedtls-dev cppcheck
   ```
+
+  `libmbedtls-dev` (mbedTLS 3.6, the same 3.6 LTS line that ESP-IDF v5.5
+  bundles) is only needed for the host test `secure_channel_interop_tests`;
+  without it that test is skipped with a CMake warning.
 - Build from the repository root:
 
   ```sh

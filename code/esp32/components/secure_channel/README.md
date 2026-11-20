@@ -13,7 +13,9 @@ failures end the session; the caller must close the connection.
 Do not treat the implementation as production-certified. Commissioning,
 hardware interoperability testing, and independent cryptographic review are
 still required before deployment (Design Document, Chapter 6, Section 6.2,
-Requirements 4.1–4.3 and 4.7–4.9). The gateway and ESP32 backends were
-checked against each other on a host build (handshake, protected messages
-including empty payloads, tampering, replay, and PSK mismatch); repeat that
-check on target hardware.
+Requirements 4.1–4.3 and 4.7–4.9). The gateway and ESP32 backends are
+checked against each other on the host by the CTest
+`secure_channel_interop_tests` (handshake, protected messages including empty
+payloads, tampering, replay, and PSK mismatch; see
+`code/raspberry-pi/test/README.md`). It uses the host mbedTLS 3.6 library, not
+the ESP-IDF build or the hardware RNG; repeat the check on target hardware.

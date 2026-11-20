@@ -315,6 +315,43 @@ static int test_rejects_tampered_messages(void)
 }
 
 /*
+ * Both backends at the production pool size (1): a second session is
+ * refused while the first is active, and a full session works again after
+ * clear() released the slot.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static int test_production_pool_size(void)
+{
+    static const uint8_t psk[SECURE_CHANNEL_PSK_SIZE] = {0xC3U};
+    secure_channel_t pi;
+    secure_channel_t esp;
+    secure_channel_t extra;
+    int result = 1;
+
+    if ((secure_channel_init(&pi, SECURE_CHANNEL_ROLE_CLIENT, psk) == 0) &&
+        (esp32_secure_channel_init(&esp, SECURE_CHANNEL_ROLE_SERVER, psk) ==
+         0) &&
+        (secure_channel_init(&extra, SECURE_CHANNEL_ROLE_CLIENT, psk) != 0) &&
+        (esp32_secure_channel_init(&extra, SECURE_CHANNEL_ROLE_SERVER, psk) !=
+         0))
+    {
+        secure_channel_clear(&pi);
+        esp32_secure_channel_clear(&esp);
+        if ((secure_channel_init(&pi, SECURE_CHANNEL_ROLE_CLIENT, psk) == 0) &&
+            (esp32_secure_channel_init(&esp, SECURE_CHANNEL_ROLE_SERVER,
+                                       psk) == 0) &&
+            (perform_handshake(&pi, &esp) == 0))
+        {
+            result = 0;
+        }
+    }
+
+    secure_channel_clear(&pi);
+    esp32_secure_channel_clear(&esp);
+    return result;
+}
+
+/*
  * Execute the OpenSSL <-> mbedTLS secure-channel interoperability tests.
  * Design Document, Chapter 6, Section 6.2, Requirements 4.1-4.3 and 4.7-4.9.
  */
@@ -324,6 +361,7 @@ int main(void)
         (test_empty_messages() != 0) ||
         (test_rejects_wrong_psk() != 0) ||
         (test_rejects_tampered_messages() != 0) ||
+        (test_production_pool_size() != 0) ||
         random_failed)
     {
         (void)fputs("secure channel interop tests failed\n", stderr);

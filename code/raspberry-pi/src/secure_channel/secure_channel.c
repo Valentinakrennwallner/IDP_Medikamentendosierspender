@@ -20,6 +20,15 @@
  * Pi because it is already required there by libcurl for the Telegram HTTPS
  * connection. Algorithms and wire format are identical to the ESP32 mbedTLS
  * implementation (code/protocol/SECURE_CHANNEL.md).
+ *
+ * Memory: session state lives in a fixed static pool of
+ * SECURE_CHANNEL_POOL_SIZE slots (default 1, the single ESP32 connection);
+ * this file does not allocate heap memory (MISRA C:2012 Rule 21.3). Host
+ * tests that hold more sessions at once override the size with a compile
+ * definition. OpenSSL itself still allocates internally (EVP_PKEY, EVP_*
+ * contexts); see docs/misra-deviations.md. secure_channel_init() and
+ * secure_channel_clear() are not thread-safe and run on the BLE worker
+ * thread of bluez_central.c only.
  */
 
 #include "../../../protocol/include/secure_channel.h"
@@ -31,7 +40,6 @@
 #include <openssl/kdf.h>
 #include <openssl/params.h>
 #include <openssl/rand.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define SECURE_CHANNEL_INTERNAL_MAGIC UINT32_C(0x53434331)
@@ -39,6 +47,11 @@
 #define SECURE_CHANNEL_KEY_SIZE 32U
 #define SECURE_CHANNEL_NONCE_PREFIX_SIZE 4U
 #define SECURE_CHANNEL_DERIVED_KEY_SIZE 40U
+
+/* Number of sessions that can be initialized at the same time. */
+#ifndef SECURE_CHANNEL_POOL_SIZE
+#define SECURE_CHANNEL_POOL_SIZE 1U
+#endif
 
 typedef enum
 {
@@ -49,7 +62,7 @@ typedef enum
     SECURE_CHANNEL_STATE_FAILED
 } secure_channel_state_t;
 
-typedef struct
+typedef struct secure_channel_backend_state
 {
     uint32_t magic;
     secure_channel_role_t role;
@@ -65,29 +78,54 @@ typedef struct
     uint64_t receive_sequence;
 } secure_channel_internal_t;
 
-/* Access private heap state after checking its internal marker. */
+/* Static session pool; a slot is free while its magic is not set. */
+static secure_channel_internal_t
+    secure_channel_pool[SECURE_CHANNEL_POOL_SIZE];
+
+/*
+ * Return the pool slot a handle refers to, or NULL if the handle does not
+ * point to an initialized slot of this pool.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
 static secure_channel_internal_t *secure_channel_internal(
-    secure_channel_t *channel)
+    const secure_channel_t *channel)
 {
-    secure_channel_internal_t *internal;
+    secure_channel_internal_t *internal = NULL;
+    size_t index;
 
-    if (channel == NULL)
+    for (index = 0U;
+         (channel != NULL) && (index < SECURE_CHANNEL_POOL_SIZE); index++)
     {
-        return NULL;
-    }
-
-    internal = channel->backend_state;
-    if (internal == NULL)
-    {
-        return NULL;
-    }
-
-    if (internal->magic != SECURE_CHANNEL_INTERNAL_MAGIC)
-    {
-        return NULL;
+        if ((channel->backend_state == &secure_channel_pool[index]) &&
+            (secure_channel_pool[index].magic ==
+             SECURE_CHANNEL_INTERNAL_MAGIC))
+        {
+            internal = &secure_channel_pool[index];
+        }
     }
 
     return internal;
+}
+
+/*
+ * Return a free pool slot, or NULL if all slots are in use.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static secure_channel_internal_t *secure_channel_take_slot(void)
+{
+    secure_channel_internal_t *slot = NULL;
+    size_t index;
+
+    for (index = 0U; (index < SECURE_CHANNEL_POOL_SIZE) && (slot == NULL);
+         index++)
+    {
+        if (secure_channel_pool[index].magic != SECURE_CHANNEL_INTERNAL_MAGIC)
+        {
+            slot = &secure_channel_pool[index];
+        }
+    }
+
+    return slot;
 }
 
 /* Encode a 64-bit protocol number in network byte order. */
@@ -380,11 +418,13 @@ int secure_channel_init(secure_channel_t *channel,
         return -1;
     }
 
-    internal = calloc(1U, sizeof(*internal));
+    internal = secure_channel_take_slot();
     if (internal == NULL)
     {
         return -1;
     }
+    OPENSSL_cleanse(internal, sizeof(*internal));
+    internal->ephemeral_key = NULL;
     internal->magic = SECURE_CHANNEL_INTERNAL_MAGIC;
     internal->role = role;
     internal->state = SECURE_CHANNEL_STATE_IDLE;
@@ -806,7 +846,7 @@ cleanup:
 }
 
 /*
- * Erase ephemeral keys, PSK, and session keys before releasing the channel.
+ * Erase ephemeral keys, PSK, and session keys and return the pool slot.
  * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7–4.9.
  */
 void secure_channel_clear(secure_channel_t *channel)
@@ -817,7 +857,9 @@ void secure_channel_clear(secure_channel_t *channel)
     {
         EVP_PKEY_free(internal->ephemeral_key);
         OPENSSL_cleanse(internal, sizeof(*internal));
-        free(internal);
+    }
+    if (channel != NULL)
+    {
         channel->backend_state = NULL;
     }
 }

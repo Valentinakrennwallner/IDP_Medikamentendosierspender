@@ -160,6 +160,11 @@ if(BUILD_TESTING)
         -Wextra
         -Wpedantic
     )
+    # The test holds a client and a server session at the same time; the
+    # production default of the static session pool is 1.
+    target_compile_definitions(secure_channel_test PRIVATE
+        SECURE_CHANNEL_POOL_SIZE=2U
+    )
     target_link_libraries(secure_channel_test PRIVATE OpenSSL::Crypto)
     add_test(NAME secure_channel_tests COMMAND secure_channel_test)
 
@@ -167,6 +172,12 @@ if(BUILD_TESTING)
     # host mbedTLS 3.6 package (libmbedtls-dev); ESP-IDF v5.5 bundles mbedTLS
     # 3.6 as well. Both backends define the same public functions, so the
     # mbedTLS backend's functions are renamed to esp32_secure_channel_*.
+    # The struct tag secure_channel_backend_state is deliberately not
+    # renamed: the test only sees it as an incomplete type, which is
+    # compatible with both backends' definitions (C11 6.2.7). Renaming it in
+    # one translation unit would give secure_channel_t incompatible member
+    # types across translation units. The test uses one session per backend
+    # at a time, so the production pool size (1) is kept.
     find_package(MbedTLS 3.6 CONFIG QUIET)
     if(MbedTLS_FOUND AND (MbedTLS_VERSION VERSION_LESS 3.7))
         add_executable(secure_channel_interop_test

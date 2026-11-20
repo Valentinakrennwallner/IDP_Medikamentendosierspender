@@ -240,13 +240,53 @@ static int test_rejects_tampered_message(void)
     return result;
 }
 
+/*
+ * Static session pool (built with SECURE_CHANNEL_POOL_SIZE=2 for this test):
+ * a third session is refused, clear() releases a slot for reuse, a cleared
+ * handle is rejected, and clearing it again is harmless.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static int test_session_pool(void)
+{
+    static const uint8_t psk[SECURE_CHANNEL_PSK_SIZE] = {0x5AU};
+    secure_channel_t first;
+    secure_channel_t second;
+    secure_channel_t third;
+    uint8_t client_hello[SECURE_CHANNEL_CLIENT_HELLO_SIZE];
+    size_t client_hello_size = 0U;
+    int result = 1;
+
+    if ((secure_channel_init(&first, SECURE_CHANNEL_ROLE_CLIENT, psk) == 0) &&
+        (secure_channel_init(&second, SECURE_CHANNEL_ROLE_SERVER, psk) == 0) &&
+        (secure_channel_init(&third, SECURE_CHANNEL_ROLE_CLIENT, psk) != 0))
+    {
+        secure_channel_clear(&first);
+        if ((first.backend_state == NULL) &&
+            (secure_channel_start(&first, client_hello, sizeof(client_hello),
+                                  &client_hello_size) != 0) &&
+            (secure_channel_init(&third, SECURE_CHANNEL_ROLE_CLIENT, psk) ==
+             0) &&
+            (secure_channel_start(&third, client_hello, sizeof(client_hello),
+                                  &client_hello_size) == 0))
+        {
+            result = 0;
+        }
+        secure_channel_clear(&third);
+    }
+
+    secure_channel_clear(&first);
+    secure_channel_clear(&second);
+    return result;
+}
+
 /* Execute the OpenSSL secure-channel regression tests. */
 int main(void)
 {
     if ((test_authenticated_round_trip() != 0) ||
         (test_empty_messages_round_trip() != 0) ||
         (test_rejects_wrong_psk() != 0) ||
-        (test_rejects_tampered_message() != 0))
+        (test_rejects_tampered_message() != 0) ||
+        (test_session_pool() != 0))
     {
         (void)fputs("secure channel tests failed\n", stderr);
         return EXIT_FAILURE;

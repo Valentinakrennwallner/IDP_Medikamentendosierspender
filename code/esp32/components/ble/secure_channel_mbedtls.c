@@ -17,11 +17,18 @@
  * - Key erasure: mbedtls_platform_zeroize()
  * Random numbers come from the ESP32 hardware RNG via esp_fill_random()
  * (ESP-IDF, https://github.com/espressif/esp-idf).
+ *
+ * Memory: session state lives in a fixed static pool of
+ * SECURE_CHANNEL_POOL_SIZE slots (default 1, the single BLE connection);
+ * this file does not allocate heap memory (MISRA C:2012 Rule 21.3). Mbed TLS
+ * itself still allocates internally (bignum limbs of the ECP group, keys and
+ * points); see docs/misra-deviations.md. secure_channel_init() and
+ * secure_channel_clear() are not thread-safe and run in the NimBLE host task
+ * only (ble_secure_transport.c).
  */
 
 #include "secure_channel.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #include "mbedtls/ecdh.h"
@@ -44,7 +51,12 @@
 #define TRANSCRIPT_MAX_SIZE (CLIENT_HELLO_SIZE + SERVER_HELLO_SIZE)
 #define SESSION_MAGIC UINT32_C(0x53434e31)
 
-typedef struct
+/* Number of sessions that can be initialized at the same time. */
+#ifndef SECURE_CHANNEL_POOL_SIZE
+#define SECURE_CHANNEL_POOL_SIZE 1U
+#endif
+
+typedef struct secure_channel_backend_state
 {
     uint32_t magic;
     bool started;
@@ -65,13 +77,45 @@ typedef struct
     uint64_t receive_sequence;
 } secure_channel_state_t;
 
+/* Static session pool; a slot is free while its magic is not set. */
+static secure_channel_state_t session_pool[SECURE_CHANNEL_POOL_SIZE];
+
 /*
- * Return the private state associated with a public secure-channel handle.
+ * Return the pool slot a handle refers to, or NULL if the handle does not
+ * point to an initialized slot of this pool.
  * Design Document, Chapter 2, Section 2.1 (Bluetooth communication).
  */
-static secure_channel_state_t *state_of(secure_channel_t *channel)
+static secure_channel_state_t *state_of(const secure_channel_t *channel)
 {
-    return (secure_channel_state_t *)channel->backend_state;
+    secure_channel_state_t *state = NULL;
+    size_t i;
+    for (i = 0U; i < SECURE_CHANNEL_POOL_SIZE; ++i)
+    {
+        if ((channel->backend_state == &session_pool[i]) &&
+            (session_pool[i].magic == SESSION_MAGIC))
+        {
+            state = &session_pool[i];
+        }
+    }
+    return state;
+}
+
+/*
+ * Return a free pool slot, or NULL if all slots are in use.
+ * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.9.
+ */
+static secure_channel_state_t *take_slot(void)
+{
+    secure_channel_state_t *slot = NULL;
+    size_t i;
+    for (i = 0U; (i < SECURE_CHANNEL_POOL_SIZE) && (slot == NULL); ++i)
+    {
+        if (session_pool[i].magic != SESSION_MAGIC)
+        {
+            slot = &session_pool[i];
+        }
+    }
+    return slot;
 }
 
 /*
@@ -275,11 +319,12 @@ int secure_channel_init(secure_channel_t *channel, secure_channel_role_t role,
     }
 
     channel->backend_state = NULL;
-    s = calloc(1U, sizeof(*s));
+    s = take_slot();
     if (s == NULL)
     {
         return -1;
     }
+    mbedtls_platform_zeroize(s, sizeof(*s));
     channel->backend_state = s;
     (void)memcpy(s->psk, psk, sizeof(s->psk));
     mbedtls_ecp_group_init(&s->group);
@@ -581,7 +626,7 @@ int secure_channel_open(secure_channel_t *channel, const uint8_t *input, size_t 
 }
 
 /*
- * Erase ephemeral keys, PSK, and session keys before releasing channel state.
+ * Erase ephemeral keys, PSK, and session keys and return the pool slot.
  * Design Document, Chapter 6, Section 6.2, Requirements 4.1 and 4.7-4.9.
  */
 void secure_channel_clear(secure_channel_t *channel)
@@ -599,7 +644,6 @@ void secure_channel_clear(secure_channel_t *channel)
         mbedtls_ecp_point_free(&s->public_key);
         mbedtls_ecp_point_free(&s->peer_public_key);
         mbedtls_platform_zeroize(s, sizeof(*s));
-        free(s);
     }
     channel->backend_state = NULL;
 }

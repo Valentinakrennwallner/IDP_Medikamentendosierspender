@@ -33,15 +33,28 @@ typedef enum
     SECURE_CHANNEL_MESSAGE_FAULT = 6
 } secure_channel_message_type_t;
 
+/*
+ * Private per-session state. Each backend defines this structure in its own
+ * source file and keeps its instances in a fixed static pool of
+ * SECURE_CHANNEL_POOL_SIZE slots (default 1, set per backend). No dynamic
+ * memory is allocated by the backends' own code (MISRA C:2012 Rule 21.3).
+ */
+struct secure_channel_backend_state;
+
 typedef struct
 {
-    void *backend_state;
+    struct secure_channel_backend_state *backend_state;
 } secure_channel_t;
 
 /*
- * Initialize a role-specific P-256 ECDHE/PSK session. The channel object is
- * initialized by this call, and the PSK is copied into its private state.
- * Call secure_channel_clear() before reinitializing an active channel.
+ * Initialize a role-specific P-256 ECDHE/PSK session. The call takes one free
+ * slot from the backend's static pool and copies the PSK into it; it fails
+ * (returns -1) when no slot is free. Call secure_channel_clear() before
+ * reinitializing an active channel, otherwise its slot stays occupied.
+ *
+ * secure_channel_init() and secure_channel_clear() are not thread-safe: the
+ * pool is not locked. Call them from one task/thread only (ESP32: the NimBLE
+ * host task; Raspberry Pi: the BLE worker thread of bluez_central.c).
  */
 int secure_channel_init(secure_channel_t *channel,
                         secure_channel_role_t role,
@@ -88,7 +101,10 @@ int secure_channel_open(secure_channel_t *channel,
                         size_t plaintext_capacity,
                         size_t *plaintext_size);
 
-/* Erase session key material and return the state to uninitialized. */
+/*
+ * Erase session key material, release the pool slot, and set the handle to
+ * uninitialized. Safe to call on a handle whose backend_state is NULL.
+ */
 void secure_channel_clear(secure_channel_t *channel);
 
 #endif

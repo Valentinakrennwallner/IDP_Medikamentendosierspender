@@ -165,7 +165,7 @@ headers are given to cppcheck.
 | 17.7 | 1 | Fix: `main()` ignores the result of `puts()`. | `main.c:6` |
 | 21.14 | 4 | Fix: `memcmp()` compares the 4-byte `"MDP1"` magic; use a byte array. | `secure_channel_mbedtls.c:399`, `:510`; `secure_channel.c:337`, `:724` |
 | 8.4 | 1 | Fix: `app_main()` has no prior declaration. | `app_main.c:7` |
-| 21.3 | 7 | Fix: `malloc`/`calloc`/`free` in the secure channels, `bluez_central.c`, and `telegram.c`. | `secure_channel_mbedtls.c:581`; `secure_channel.c:796`; `bluez_central.c:1404`, `:1410`, `:1496`; `telegram.c:248`, `:251` |
+| 21.3 | 7 | Fix: `malloc`/`calloc`/`free` in `bluez_central.c` and `telegram.c`. Fixed in both secure channels (2026-11-20): session state is a static pool, see below. | `bluez_central.c:1404`, `:1410`, `:1496`; `telegram.c:248`, `:251` |
 | 21.6 | 4 | Fix, or deviate for `time_sync.c`, which persists the last valid time with file I/O. | `bluez_central.c:10`, `main.c:1`, `telegram.c:9`, `time_sync.c:5` |
 | 21.10 | 2 | Deviation candidate: `clock_gettime()` and `time_t` are needed for monotonic timers and TLS time. | `bluez_central.c:14`, `telegram.c:12` |
 | 21.1 | 1 | Fix: pass `_POSIX_C_SOURCE` as a compile definition in CMake instead of `#define`. | `bluez_central.c:1` |
@@ -179,6 +179,20 @@ headers are given to cppcheck.
 
 The artefacts exist because the screening analyses the ESP32 and gateway code
 together as one program. Screening each program separately would remove them.
+
+#### Rule 21.3 and third-party libraries (known limitation)
+
+Both secure-channel backends keep their session state in a fixed static pool
+(`SECURE_CHANNEL_POOL_SIZE`, default 1 per device; only host tests override
+it) instead of `calloc`/`free`. Rule 21.3 is applied to the project's own
+code only: OpenSSL (Raspberry Pi) and Mbed TLS (ESP32) still allocate heap
+memory internally, for example for `EVP_PKEY` and `EVP_*_CTX` objects and
+for Mbed TLS bignum limbs of keys and points. Every such allocation is
+released on all paths (see Rule 15.1), and an allocation failure in the
+library is returned as an error that ends the session. Removing it would
+need a library configuration without heap use (for example an Mbed TLS
+`MBEDTLS_MEMORY_BUFFER_ALLOC_C` static buffer), which is not part of the
+current design. The cppcheck screen does not analyse library code.
 
 ### Required rules, test code
 

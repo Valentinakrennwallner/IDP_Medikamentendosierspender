@@ -10,6 +10,19 @@ always the ECDHE server, so this backend implements only that role:
 is provided by the gateway backend only. Authentication, framing, or replay
 failures end the session; the caller must close the connection.
 
+Session state is kept in a fixed static pool of `SECURE_CHANNEL_POOL_SIZE`
+slots (default 1: the ESP32 accepts one BLE connection). `secure_channel_init()`
+takes a free slot and fails when none is left; `secure_channel_clear()` erases
+and releases it. The backend allocates no heap memory itself (MISRA C:2012
+Rule 21.3). `secure_channel_init()` and `secure_channel_clear()` are not
+thread-safe; they run only in the NimBLE host task (`ble_secure_transport.c`:
+connect, disconnect, and connection-close paths).
+
+Known limitation: Mbed TLS itself still allocates heap memory internally
+(bignum limbs of the ECP group, private key, and points; GCM contexts). Rule
+21.3 is applied to the project's own code only (see
+`docs/misra-deviations.md`).
+
 Do not treat the implementation as production-certified. Commissioning,
 hardware interoperability testing, and independent cryptographic review are
 still required before deployment (Design Document, Chapter 6, Section 6.2,

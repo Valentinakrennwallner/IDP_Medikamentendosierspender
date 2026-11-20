@@ -8,7 +8,9 @@ hardware.
 The secure-channel tests perform a real OpenSSL handshake, verify the PSK,
 exercise protected messages (including the empty heartbeat and acknowledgement
 payloads) in both directions, and reject replay and authentication-tag
-tampering.
+tampering. They also check the static session pool: the test is built with
+`SECURE_CHANNEL_POOL_SIZE=2`, a third session is refused, `secure_channel_clear()`
+frees a slot for reuse, and a cleared handle is rejected.
 
 `secure_channel_interop_tests` (`secure_channel_interop_test.c`) checks the
 gateway OpenSSL backend against the ESP32 mbedTLS backend
@@ -22,7 +24,9 @@ backend is changed for the test. `esp_fill_random()` is declared by the mock
 `../../esp32/test/mocks/esp_random.h` and implemented in the test with
 OpenSSL `RAND_bytes()`. The test needs the host mbedTLS 3.6 package
 (`libmbedtls-dev`; ESP-IDF v5.5 bundles mbedTLS 3.6 as well) and is skipped
-with a CMake warning when it is missing. It does not replace an
+with a CMake warning when it is missing. It keeps the production pool size of
+1 for both backends and checks that a second session is refused and that a
+full handshake works again after `secure_channel_clear()`. It does not replace an
 interoperability check on the real hardware.
 
 The startup-transfer tests cover the schedule/time payload, rejection of

@@ -220,16 +220,15 @@ weight_measure_status_t weight_measure(const weight_calibration_t *calibration,
                                        weight_measurement_t *measurement)
 {
     weight_measure_status_t status = WEIGHT_MEASURE_SENSOR_FAULT;
-    weight_result_t result;
     uint32_t attempt;
     bool finished = false;
 
     for (attempt = 0U; (attempt <= WEIGHT_MEASURE_RETRIES) && !finished;
          ++attempt)
     {
-        result = weight_read(calibration, intake_window_active,
-                             has_previous_measurement, previous_weight_grams,
-                             measurement);
+        weight_result_t result = weight_read(calibration, intake_window_active,
+                                             has_previous_measurement,
+                                             previous_weight_grams, measurement);
         if (result == WEIGHT_RESULT_OK)
         {
             status = WEIGHT_MEASURE_OK;

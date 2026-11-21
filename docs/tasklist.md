@@ -39,7 +39,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 7 | Gateway message dispatch | Pi | done |
 | 8 | Calibration data and NVS | ESP32 | open |
 | 9 | Serial calibration | ESP32 | open |
-| 10 | Measurement with retries | ESP32 | in progress (Valentina) |
+| 10 | Measurement with retries | ESP32 | done (Johannes) |
 | 11 | Sensor-fault state | ESP32 | open |
 | 12 | Filling check | ESP32 | partial |
 | 13 | Expected-weight table | ESP32 | partial |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 4 done, 11 partial, 17 open.
+Summary: 5 done, 11 partial, 16 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -152,14 +152,15 @@ Prompt (original, unchanged):
 Serial calibration. "Add weight_calibrate(): a serial UART dialog that measures the empty container and a reference weight, computes the factor, and stores it. Add a pure computation function with host tests."
 ```
 
-### 10. Measurement with retries — in progress (Valentina)
+### 10. Measurement with retries — done (Johannes)
 Prompt (original, unchanged):
 
 ```text
 Measurement with retries. "Add weight_measure(): on a faulty result, poll twice more and report a sensor fault only if both fail (2.5). Reuse weight_read(). Return a typed status and test it with mocked sequences."
 ```
 
-- Note: `weight_init()` and `weight_read()` exist.
+- Done: `weight_measure()` in `code/esp32/components/weight`, tests in `code/esp32/test/weight_test.c`.
+- Follow-up: the application must call `weight_measure()` instead of `weight_read()` (tasks 11 and 21).
 
 ### 11. Sensor-fault state — open
 Prompt (original, unchanged):

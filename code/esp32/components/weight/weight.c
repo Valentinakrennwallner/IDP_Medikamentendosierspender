@@ -203,3 +203,53 @@ weight_result_t weight_read(const weight_calibration_t *calibration,
     *measurement = completed_measurement;
     return WEIGHT_RESULT_OK;
 }
+
+/*
+ * Measure once and repeat a faulty read up to WEIGHT_MEASURE_RETRIES times.
+ * Only when the first read and both repeated reads are faulty is a sensor
+ * fault reported; the caller then handles it as described in Requirements
+ * 2.6 and 2.7. Argument and initialisation errors end the measurement at
+ * once because repeating the read cannot fix them.
+ * Design Document, Chapter 2, Section 2.1, Chapter 4, Section 4.1
+ * (Hazard 2), and Chapter 6, Section 6.1, Requirement 2.5.
+ */
+weight_measure_status_t weight_measure(const weight_calibration_t *calibration,
+                                       bool intake_window_active,
+                                       bool has_previous_measurement,
+                                       float previous_weight_grams,
+                                       weight_measurement_t *measurement)
+{
+    weight_measure_status_t status = WEIGHT_MEASURE_SENSOR_FAULT;
+    weight_result_t result;
+    uint32_t attempt;
+    bool finished = false;
+
+    for (attempt = 0U; (attempt <= WEIGHT_MEASURE_RETRIES) && !finished;
+         ++attempt)
+    {
+        result = weight_read(calibration, intake_window_active,
+                             has_previous_measurement, previous_weight_grams,
+                             measurement);
+        if (result == WEIGHT_RESULT_OK)
+        {
+            status = WEIGHT_MEASURE_OK;
+            finished = true;
+        }
+        else if (result == WEIGHT_RESULT_INVALID_ARGUMENT)
+        {
+            status = WEIGHT_MEASURE_INVALID_ARGUMENT;
+            finished = true;
+        }
+        else if (result == WEIGHT_RESULT_NOT_INITIALIZED)
+        {
+            status = WEIGHT_MEASURE_NOT_INITIALIZED;
+            finished = true;
+        }
+        else
+        {
+            /* Timeout, limit value, or implausible weight: read again. */
+        }
+    }
+
+    return status;
+}

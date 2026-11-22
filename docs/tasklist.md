@@ -37,7 +37,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 5 | ESP32 logging wrapper | ESP32 | open |
 | 6 | Result and fault payloads | protocol | done |
 | 7 | Gateway message dispatch | Pi | done |
-| 8 | Calibration data and NVS | ESP32 | open |
+| 8 | Calibration data and NVS | ESP32 | in progress (Valentina) |
 | 9 | Serial calibration | ESP32 | open |
 | 10 | Measurement with retries | ESP32 | done (Johannes) |
 | 11 | Sensor-fault state | ESP32 | done (Johannes) |
@@ -136,7 +136,7 @@ Gateway message dispatch. "Add a gateway handler for authenticated RESULT, FAULT
 - Done: `code/raspberry-pi/src/ble/message_dispatch.c`.
 - Follow-up: the handler is wired into `main()` in task 27.
 
-### 8. Calibration data and NVS — open
+### 8. Calibration data and NVS — in progress (Valentina)
 Prompt (original, unchanged):
 
 ```text

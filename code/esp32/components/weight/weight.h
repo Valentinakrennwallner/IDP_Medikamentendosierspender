@@ -14,7 +14,9 @@
 /*
  * Calibration factor of the assembled load cell, determined during
  * commissioning with a 1-euro coin (7.5 g) as reference weight and verified
- * with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g.
+ * with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g. Documented
+ * commissioning value only: at run time the factor is loaded from NVS
+ * (persistence component) and there is no fallback to this constant.
  * Design Document, Chapter 6, Section 6.1, Requirement 2.8.
  */
 #define WEIGHT_COUNTS_PER_GRAM 17660.0F

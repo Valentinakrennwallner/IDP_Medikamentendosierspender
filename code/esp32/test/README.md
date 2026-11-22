@@ -26,6 +26,18 @@ recheck, a new report for a second fault, programming errors handled as a
 fault, and missing arguments (Requirements 2.6 and 2.7). It is built and run
 by the host CMake project in `../raspberry-pi` (`sensor_fault_tests`).
 
+`persistence_test.c` checks the calibration storage (`components/persistence`)
+against an in-memory NVS (`mocks/nvs.h`, `mocks/nvs_flash.h`,
+`mocks/esp_err.h`) in which every call can be made to fail: save and load of
+the commissioning values, the exact 16-byte blob layout with CRC-32, rounding
+to 0.001 count per gram and the tare range limits, missing data, a wrong
+checksum, version, value or length (output left unchanged), invalid values
+that must not be written, NVS errors on open, read, write and commit, NVS
+init errors that are not repaired by erasing, and missing arguments
+(Requirement 2.8). It is built and run by the host CMake project in
+`../raspberry-pi` (`persistence_tests`). The GPIO mock takes `esp_err_t` and
+`ESP_OK` from `mocks/esp_err.h`, as in ESP-IDF.
+
 `mocks/esp_random.h` declares `esp_fill_random()` for the host build of the
 mbedTLS secure channel backend used by `secure_channel_interop_tests` in
 `../../raspberry-pi` (see `../../raspberry-pi/test/README.md`).

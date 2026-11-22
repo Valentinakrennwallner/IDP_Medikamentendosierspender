@@ -161,6 +161,23 @@ if(BUILD_TESTING)
     )
     add_test(NAME sensor_fault_tests COMMAND sensor_fault_test)
 
+    add_executable(persistence_test
+        ../esp32/test/persistence_test.c
+        ../esp32/components/persistence/persistence.c
+    )
+    target_include_directories(persistence_test PRIVATE
+        ../esp32/test/mocks
+        ../esp32/components/weight
+        ../esp32/components/persistence
+    )
+    target_compile_options(persistence_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(persistence_test PRIVATE m)
+    add_test(NAME persistence_tests COMMAND persistence_test)
+
     add_executable(schedule_test
         test/schedule_test.c
         src/schedule/schedule.c

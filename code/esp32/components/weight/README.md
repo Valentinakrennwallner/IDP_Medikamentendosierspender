@@ -28,7 +28,11 @@ the measurement. It is part of the commissioning calibration (Requirement
 2.8); the caller stores the tare offset in NVS (`persistence` component).
 `WEIGHT_COUNTS_PER_GRAM` (17660 counts per gram) is the calibration factor of
 the assembled load cell, determined with a 1-euro coin (7.5 g) and verified
-with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g.
+with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g. It is only the
+documented commissioning value: at run time the tare offset and the factor
+are loaded from NVS with `persistence_calibration_load()`, and without valid
+calibration data no evaluation is performed (fail-closed, no fallback to this
+constant).
 
 `weight_stability_add()` keeps the last `WEIGHT_STABLE_SAMPLE_COUNT` (5)
 plausible weights. Only if they lie at most

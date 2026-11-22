@@ -3,11 +3,11 @@
 
 #include <stdint.h>
 
+#include "esp_err.h"
+
 /* Minimal ESP-IDF GPIO declarations so the weight driver builds on the host. */
-typedef int esp_err_t;
 typedef int gpio_num_t;
 
-#define ESP_OK 0
 #define GPIO_NUM_32 32
 #define GPIO_NUM_33 33
 

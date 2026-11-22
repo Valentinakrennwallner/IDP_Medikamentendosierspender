@@ -162,7 +162,7 @@ Measurement with retries. "Add weight_measure(): on a faulty result, poll twice 
 - Done: `weight_measure()` in `code/esp32/components/weight`, tests in `code/esp32/test/weight_test.c`.
 - Follow-up: the application must call `weight_measure()` instead of `weight_read()` (tasks 11 and 21).
 
-### 11. Sensor-fault state — open
+### 11. Sensor-fault state  ESP32 in progress (Johannes) 
 Prompt (original, unchanged):
 
 ```text

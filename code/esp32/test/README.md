@@ -3,13 +3,18 @@
 `weight_test.c` checks the HX711 driver (`components/weight`) against mocked
 ESP-IDF GPIO, timer, and FreeRTOS headers in `mocks/`: the 25-pulse read,
 24-bit sign decoding, the 24-bit limit values, the -5 g to 100 g range, the
-5 g change limit outside an intake window, and the 200 ms conversion timeout.
-For `weight_measure()` the mock delivers a sequence of conversions, one per
+5 g change limit outside an intake window, the 200 ms conversion timeout, the
+10-sample tare mean (and its abort on a faulty sample), the 17660 counts/g
+calibration constant, and the 5-sample stability window (0.04 g spread,
+short outliers, reset after faulty measurements). The GPIO mock models the
+HX711 on GPIO 33/32 and delivers a queue of consecutive conversions, one per
 read (a conversion can also never become ready, which makes the read time
-out). The tests cover a valid first read, a valid first or second repetition,
-three faulty reads (sensor fault, no fourth read, result not written), a
-lasting change above 5 g outside an intake window, and argument and
-initialisation errors that must not read the sensor (Requirement 2.5).
+out); the tare tests use the same queue.
+For `weight_measure()` the tests cover a valid first read, a valid first or
+second repetition, three faulty reads (sensor fault, no fourth read, result
+not written), a lasting change above 5 g outside an intake window, and
+argument and initialisation errors that must not read the sensor
+(Requirement 2.5).
 It is built and run by the host CMake project in `../raspberry-pi`
 (`weight_tests`), like the heartbeat client tests.
 

@@ -39,3 +39,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Adapt ESP32 code to the assembled hardware: HX711 on GPIO 33/32, calibration constant 17660 counts/g, 10-sample tare, 5-sample stability window (0.04 g), document pin/LED/resistor deviations, with host tests (Claude Code, Claude Opus 5.5)
 - Merge main into task/11-sensor-fault-state: keep weight_measure() and tare/stability window, one shared HX711 sample queue on GPIO 33/32 in weight_test.c, update weight and test READMEs (Claude Code, Claude Opus 5.5)
 - Add ESP32 persistence component: calibration (tare, counts per gram) as versioned NVS blob with CRC-32, fail-closed load/save without fallback, NVS host mocks, with host tests (Claude Code, Claude Opus 5.5)
+- Mark task 8 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)

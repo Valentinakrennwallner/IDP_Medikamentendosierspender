@@ -4,10 +4,12 @@
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #define PULSES_PER_READ 25U
+#define MAXIMUM_QUEUED_SAMPLES 16U
 
 static int clock_level;
 static int data_ready;
@@ -15,6 +17,9 @@ static uint32_t sample_word;
 static unsigned int sample_bit;
 static unsigned int rising_edges;
 static int64_t now_us;
+static uint32_t sample_queue[MAXIMUM_QUEUED_SAMPLES];
+static unsigned int queue_length;
+static unsigned int queue_index;
 
 /* Accept the HX711 pin configuration. */
 esp_err_t gpio_config(const gpio_config_t *config)
@@ -26,7 +31,7 @@ esp_err_t gpio_config(const gpio_config_t *config)
 /* Record the clock level and count rising edges. */
 esp_err_t gpio_set_level(gpio_num_t gpio, uint32_t level)
 {
-    if (gpio == GPIO_NUM_18)
+    if (gpio == GPIO_NUM_32)
     {
         if ((level != 0U) && (clock_level == 0))
         {
@@ -42,9 +47,19 @@ int gpio_get_level(gpio_num_t gpio)
 {
     int level = 1;
 
-    if (gpio == GPIO_NUM_19)
+    if (gpio == GPIO_NUM_33)
     {
-        if ((clock_level == 0) && (sample_bit == 0U))
+        if ((clock_level == 0) && (sample_bit >= 24U) &&
+            (queue_index < queue_length))
+        {
+            /* Previous conversion fully read: offer the next queued one. */
+            sample_word = sample_queue[queue_index];
+            queue_index++;
+            sample_bit = 0U;
+            rising_edges = 0U;
+            level = 0;
+        }
+        else if ((clock_level == 0) && (sample_bit == 0U))
         {
             level = (data_ready != 0) ? 0 : 1;
         }
@@ -81,6 +96,21 @@ static void set_sample(uint32_t word)
     rising_edges = 0U;
     clock_level = 0;
     data_ready = 1;
+    queue_length = 0U;
+    queue_index = 0U;
+}
+
+/* Load several consecutive conversion results, the first one immediately. */
+static void set_samples(const uint32_t *words, unsigned int count)
+{
+    unsigned int index;
+
+    set_sample(words[0]);
+    for (index = 1U; index < count; index++)
+    {
+        sample_queue[index - 1U] = words[index];
+    }
+    queue_length = count - 1U;
 }
 
 /* Verify a calibrated positive reading and the 25-pulse read protocol. */
@@ -237,6 +267,152 @@ static int test_invalid_arguments(void)
     return 0;
 }
 
+/* Requirement 2.8: the tare offset is the mean of ten raw samples. */
+static int test_tare_is_mean_of_ten_samples(void)
+{
+    static const uint32_t samples[WEIGHT_TARE_SAMPLE_COUNT] = {
+        1000U, 1002U, 998U, 1001U, 999U, 1000U, 1003U, 997U, 1000U, 1010U};
+    int32_t tare_offset_counts = 0;
+
+    set_samples(samples, WEIGHT_TARE_SAMPLE_COUNT);
+    if ((weight_measure_tare(&tare_offset_counts) != WEIGHT_RESULT_OK) ||
+        (tare_offset_counts != 1001) || (queue_index != queue_length))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* Requirement 2.2: one faulty sample aborts the tare and keeps the old value. */
+static int test_tare_aborts_on_faulty_sample(void)
+{
+    static const uint32_t samples[3] = {1000U, UINT32_C(0x007FFFFF), 1000U};
+    int32_t tare_offset_counts = 42;
+
+    set_samples(samples, 3U);
+    if ((weight_measure_tare(&tare_offset_counts) != WEIGHT_RESULT_SENSOR_FAULT) ||
+        (tare_offset_counts != 42) ||
+        (weight_measure_tare(NULL) != WEIGHT_RESULT_INVALID_ARGUMENT))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* The calibration constant converts 7.5 g worth of counts to 7.5 g. */
+static int test_calibration_constant(void)
+{
+    weight_calibration_t calibration = {0, WEIGHT_COUNTS_PER_GRAM};
+    weight_measurement_t measurement = {0, 0.0F};
+
+    set_sample(UINT32_C(132450));
+    if ((weight_read(&calibration, true, false, 0.0F, &measurement) !=
+         WEIGHT_RESULT_OK) ||
+        (fabsf(measurement.grams - 7.5F) > 0.0001F))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* Feed values into the stability window and count the stable results. */
+static unsigned int add_values(weight_stability_t *stability,
+                               const float *values,
+                               unsigned int count,
+                               float *stable_grams)
+{
+    unsigned int index;
+    unsigned int stable_count = 0U;
+
+    for (index = 0U; index < count; index++)
+    {
+        if (weight_stability_add(stability, values[index], stable_grams))
+        {
+            stable_count++;
+        }
+    }
+    return stable_count;
+}
+
+/* Five values within 0.04 g give their mean, four values are not enough. */
+static int test_stable_after_five_values(void)
+{
+    static const float values[5] = {10.00F, 10.03F, 10.01F, 10.02F, 10.015F};
+    weight_stability_t stability;
+    float stable_grams = -1.0F;
+
+    weight_stability_reset(&stability);
+    if ((add_values(&stability, values, 4U, &stable_grams) != 0U) ||
+        (stable_grams != -1.0F) ||
+        (!weight_stability_add(&stability, values[4], &stable_grams)) ||
+        (fabsf(stable_grams - 10.015F) > 0.0001F))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* A spread above 0.04 g is not stable. */
+static int test_spread_too_large(void)
+{
+    static const float values[5] = {10.00F, 10.00F, 10.05F, 10.00F, 10.00F};
+    weight_stability_t stability;
+    float stable_grams = -1.0F;
+
+    weight_stability_reset(&stability);
+    if ((add_values(&stability, values, 5U, &stable_grams) != 0U) ||
+        (stable_grams != -1.0F))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* A short outlier blocks stable results until five matching values follow. */
+static int test_short_outlier_ignored(void)
+{
+    static const float stable_values[5] = {10.0F, 10.0F, 10.0F, 10.0F, 10.0F};
+    weight_stability_t stability;
+    float stable_grams = -1.0F;
+
+    weight_stability_reset(&stability);
+    if ((add_values(&stability, stable_values, 5U, &stable_grams) != 1U) ||
+        (weight_stability_add(&stability, 13.7F, &stable_grams)) ||
+        (add_values(&stability, stable_values, 4U, &stable_grams) != 0U) ||
+        (stable_grams != 10.0F) ||
+        (!weight_stability_add(&stability, 10.0F, &stable_grams)))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* Reset (after a faulty measurement) and non-finite values restart the window. */
+static int test_reset_restarts_window(void)
+{
+    static const float values[4] = {10.0F, 10.0F, 10.0F, 10.0F};
+    weight_stability_t stability;
+    float stable_grams = -1.0F;
+
+    weight_stability_reset(&stability);
+    (void)add_values(&stability, values, 4U, &stable_grams);
+    weight_stability_reset(&stability);
+    if (weight_stability_add(&stability, 10.0F, &stable_grams))
+    {
+        return 1;
+    }
+    (void)add_values(&stability, values, 3U, &stable_grams);
+    if ((weight_stability_add(&stability, NAN, &stable_grams)) ||
+        (add_values(&stability, values, 4U, &stable_grams) != 0U) ||
+        (!weight_stability_add(&stability, 10.0F, &stable_grams)) ||
+        (weight_stability_add(NULL, 10.0F, &stable_grams)) ||
+        (weight_stability_add(&stability, 10.0F, NULL)))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 /* Run the HX711 weighing tests without ESP-IDF or hardware. */
 int main(void)
 {
@@ -246,7 +422,14 @@ int main(void)
         (test_weight_range() != 0) ||
         (test_change_outside_intake_window() != 0) ||
         (test_conversion_timeout() != 0) ||
-        (test_invalid_arguments() != 0))
+        (test_invalid_arguments() != 0) ||
+        (test_tare_is_mean_of_ten_samples() != 0) ||
+        (test_tare_aborts_on_faulty_sample() != 0) ||
+        (test_calibration_constant() != 0) ||
+        (test_stable_after_five_values() != 0) ||
+        (test_spread_too_large() != 0) ||
+        (test_short_outlier_ignored() != 0) ||
+        (test_reset_restarts_window() != 0))
     {
         (void)fputs("weight tests failed\n", stderr);
         return EXIT_FAILURE;

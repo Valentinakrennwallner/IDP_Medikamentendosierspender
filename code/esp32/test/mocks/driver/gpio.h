@@ -8,8 +8,8 @@ typedef int esp_err_t;
 typedef int gpio_num_t;
 
 #define ESP_OK 0
-#define GPIO_NUM_18 18
-#define GPIO_NUM_19 19
+#define GPIO_NUM_32 32
+#define GPIO_NUM_33 33
 
 typedef enum
 {

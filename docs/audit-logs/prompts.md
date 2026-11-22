@@ -34,3 +34,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Add gateway dispatcher for RESULT/FAULT/DAY_END (report sequence rule, unassigned results, alert callbacks) with host tests (Claude Code, Claude Opus 5.5)
 - Split DOSING_RESULT_MISSED_OR_REMOVED into MISSED, UNSCHEDULED_REMOVAL and UNEXPECTED_INCREASE (sign of the deviation outside a window) with host tests (Claude Code, Claude Opus 5.5)
 - Add Pi logging module (non-variadic log_info/warn/error, health data filter, start-up version message, low-priority non-blocking log thread) with host tests (Claude Code, Claude Opus 5.5)
+- Adapt ESP32 code to the assembled hardware: HX711 on GPIO 33/32, calibration constant 17660 counts/g, 10-sample tare, 5-sample stability window (0.04 g), document pin/LED/resistor deviations, with host tests (Claude Code, Claude Opus 5.5)

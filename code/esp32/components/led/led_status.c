@@ -1,3 +1,18 @@
+/*
+ * RGB status LED (KY-009, common cathode) of the ESP32 sensor node.
+ * Design Document, Chapter 1, Section 1.2, and Chapter 2, Sections 2.1 and
+ * 2.4.
+ *
+ * Deviations from the Design Document (Chapter 2, Section 2.4, Table 5 and
+ * Figure 3):
+ * - The R and G silk-screen labels of the KY-009 module used are swapped.
+ *   The wiring follows the actual LED colour: GPIO 25 drives red (pin
+ *   labelled "G"), GPIO 26 drives green (pin labelled "R"), GPIO 27 blue.
+ *   The GPIO assignment by colour is unchanged.
+ * - All three series resistors are 220 Ohm instead of 220 Ohm (red) and
+ *   160 Ohm (green, blue). Green and blue are therefore somewhat dimmer;
+ *   this does not affect the software.
+ */
 #include "led_status.h"
 
 #include "driver/gpio.h"

@@ -1,6 +1,7 @@
 # Weight component
 
-`weight_init()` configures HX711 data on GPIO 19 and clock on GPIO 18.
+`weight_init()` configures HX711 data (DT) on GPIO 33 and clock (SCK) on
+GPIO 32.
 `weight_read()` waits up to 200 ms for a conversion, reads the 24-bit sample
 inside a short critical section, and rejects HX711 limit values, weights
 outside -5 g to 100 g, and changes above 5 g outside an intake window. Supply
@@ -8,6 +9,29 @@ the commissioning tare offset and finite, non-zero signed counts-per-gram
 calibration and serialize calls from the weight-measurement task. The caller
 remains responsible for retries, 10-second fault recovery, fault
 indication/reporting, calibration persistence, and filling checks.
+
+`weight_measure_tare()` averages `WEIGHT_TARE_SAMPLE_COUNT` (10) raw samples
+of the empty container and returns the tare offset; a faulty sample aborts
+the measurement. It is part of the commissioning calibration (Requirement
+2.8); the caller stores the tare offset in NVS (`persistence` component).
+`WEIGHT_COUNTS_PER_GRAM` (17660 counts per gram) is the calibration factor of
+the assembled load cell, determined with a 1-euro coin (7.5 g) and verified
+with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g.
+
+`weight_stability_add()` keeps the last `WEIGHT_STABLE_SAMPLE_COUNT` (5)
+plausible weights. Only if they lie at most
+`WEIGHT_STABLE_MAXIMUM_SPREAD_GRAMS` (0.04 g, i.e. +-0.02 g) apart does it
+return true and the mean of the five values; use only this value for the
+filling check and the dose evaluation. An outlier (placing or removing
+tablets, a finger on the tray) stays in the window for five measurements, so
+it never changes the LED state. Call `weight_stability_reset()` at start-up
+and after every faulty `weight_read()` result.
+
+## Deviations from the Design Document
+
+- HX711 on GPIO 33 (DT) and GPIO 32 (SCK) instead of GPIO 19 and GPIO 18
+  (Chapter 2, Section 2.4, Table 4 and Figure 3), because GPIO 18/19 cannot
+  be reached on the breadboard of the assembled hardware.
 
 This component implements the weight-measurement module and HX711 timing/pin
 requirements in the Design Document, Chapter 2, Sections 2.1, 2.3, and 2.4,

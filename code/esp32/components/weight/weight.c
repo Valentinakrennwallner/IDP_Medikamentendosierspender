@@ -1,3 +1,12 @@
+/*
+ * HX711 weight measurement of the ESP32 sensor node.
+ * Design Document, Chapter 2, Sections 2.1, 2.3 and 2.4.
+ *
+ * Deviation from the Design Document (Chapter 2, Section 2.4, Table 4 and
+ * Figure 3): the HX711 is connected to GPIO 33 (DT) and GPIO 32 (SCK)
+ * instead of GPIO 19 and GPIO 18, because GPIO 18/19 cannot be reached on
+ * the breadboard of the assembled hardware.
+ */
 #include "weight.h"
 
 #include <math.h>
@@ -9,8 +18,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 
-#define HX711_DATA_GPIO GPIO_NUM_19
-#define HX711_CLOCK_GPIO GPIO_NUM_18
+#define HX711_DATA_GPIO GPIO_NUM_33
+#define HX711_CLOCK_GPIO GPIO_NUM_32
 #define HX711_TIMEOUT_US \
     ((int64_t)WEIGHT_READ_TIMEOUT_MS * INT64_C(1000))
 #define HX711_POLL_DELAY_US 10U
@@ -202,4 +211,123 @@ weight_result_t weight_read(const weight_calibration_t *calibration,
     completed_measurement.grams = weight_grams;
     *measurement = completed_measurement;
     return WEIGHT_RESULT_OK;
+}
+
+/*
+ * Average WEIGHT_TARE_SAMPLE_COUNT raw samples of the empty container. The
+ * sum is kept in 64 bit, so no overflow is possible for 24-bit samples; the
+ * division truncates towards zero (at most one count, about 0.0001 g).
+ * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
+ * Requirements 2.1, 2.2 and 2.8.
+ */
+weight_result_t weight_measure_tare(int32_t *tare_offset_counts)
+{
+    int64_t sum_counts = 0;
+    int32_t raw_counts = 0;
+    uint32_t sample;
+    weight_result_t result = WEIGHT_RESULT_OK;
+
+    if (tare_offset_counts == NULL)
+    {
+        return WEIGHT_RESULT_INVALID_ARGUMENT;
+    }
+    if (!weight_initialized)
+    {
+        return WEIGHT_RESULT_NOT_INITIALIZED;
+    }
+
+    for (sample = 0U;
+         (sample < WEIGHT_TARE_SAMPLE_COUNT) && (result == WEIGHT_RESULT_OK);
+         ++sample)
+    {
+        result = weight_read_raw(&raw_counts);
+        if (result == WEIGHT_RESULT_OK)
+        {
+            sum_counts += (int64_t)raw_counts;
+        }
+    }
+
+    if (result == WEIGHT_RESULT_OK)
+    {
+        *tare_offset_counts =
+            (int32_t)(sum_counts / (int64_t)WEIGHT_TARE_SAMPLE_COUNT);
+    }
+    return result;
+}
+
+/*
+ * Empty the stability window.
+ * Design Document, Chapter 2, Section 2.1.
+ */
+void weight_stability_reset(weight_stability_t *stability)
+{
+    uint32_t index;
+
+    if (stability != NULL)
+    {
+        for (index = 0U; index < WEIGHT_STABLE_SAMPLE_COUNT; ++index)
+        {
+            stability->samples_grams[index] = 0.0F;
+        }
+        stability->sample_count = 0U;
+        stability->next_index = 0U;
+    }
+}
+
+/*
+ * Store the measurement in the ring buffer and report the mean once the last
+ * WEIGHT_STABLE_SAMPLE_COUNT measurements lie within
+ * WEIGHT_STABLE_MAXIMUM_SPREAD_GRAMS (max - min). An outlier stays in the
+ * window for WEIGHT_STABLE_SAMPLE_COUNT measurements, so a new stable weight
+ * needs that many consecutive matching measurements.
+ * Design Document, Chapter 1, Section 1.2, and Chapter 2, Section 2.1.
+ */
+bool weight_stability_add(weight_stability_t *stability,
+                          float weight_grams,
+                          float *stable_weight_grams)
+{
+    float minimum_grams;
+    float maximum_grams;
+    float sum_grams = 0.0F;
+    uint32_t index;
+    bool is_stable = false;
+
+    if ((stability == NULL) || (stable_weight_grams == NULL) ||
+        (stability->next_index >= WEIGHT_STABLE_SAMPLE_COUNT))
+    {
+        return false;
+    }
+    if (!isfinite(weight_grams))
+    {
+        weight_stability_reset(stability);
+        return false;
+    }
+
+    stability->samples_grams[stability->next_index] = weight_grams;
+    stability->next_index =
+        (stability->next_index + 1U) % WEIGHT_STABLE_SAMPLE_COUNT;
+    if (stability->sample_count < WEIGHT_STABLE_SAMPLE_COUNT)
+    {
+        stability->sample_count++;
+    }
+
+    if (stability->sample_count == WEIGHT_STABLE_SAMPLE_COUNT)
+    {
+        minimum_grams = stability->samples_grams[0];
+        maximum_grams = stability->samples_grams[0];
+        for (index = 0U; index < WEIGHT_STABLE_SAMPLE_COUNT; ++index)
+        {
+            minimum_grams = fminf(minimum_grams, stability->samples_grams[index]);
+            maximum_grams = fmaxf(maximum_grams, stability->samples_grams[index]);
+            sum_grams += stability->samples_grams[index];
+        }
+        if ((maximum_grams - minimum_grams) <= WEIGHT_STABLE_MAXIMUM_SPREAD_GRAMS)
+        {
+            *stable_weight_grams =
+                sum_grams / (float)WEIGHT_STABLE_SAMPLE_COUNT;
+            is_stable = true;
+        }
+    }
+
+    return is_stable;
 }

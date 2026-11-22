@@ -146,6 +146,21 @@ if(BUILD_TESTING)
     target_link_libraries(weight_test PRIVATE m)
     add_test(NAME weight_tests COMMAND weight_test)
 
+    add_executable(sensor_fault_test
+        ../esp32/test/sensor_fault_test.c
+        ../esp32/components/sensor_fault/sensor_fault.c
+    )
+    target_include_directories(sensor_fault_test PRIVATE
+        ../esp32/components/weight
+        ../esp32/components/sensor_fault
+    )
+    target_compile_options(sensor_fault_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME sensor_fault_tests COMMAND sensor_fault_test)
+
     add_executable(schedule_test
         test/schedule_test.c
         src/schedule/schedule.c

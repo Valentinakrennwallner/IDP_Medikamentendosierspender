@@ -35,3 +35,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Split DOSING_RESULT_MISSED_OR_REMOVED into MISSED, UNSCHEDULED_REMOVAL and UNEXPECTED_INCREASE (sign of the deviation outside a window) with host tests (Claude Code, Claude Opus 5.5)
 - Add Pi logging module (non-variadic log_info/warn/error, health data filter, start-up version message, low-priority non-blocking log thread) with host tests (Claude Code, Claude Opus 5.5)
 - Add weight_measure(): on a faulty result, poll twice more and report a sensor fault only if both fail (2.5). Reuse weight_read(). Return a typed status and test it with mocked sequences. (task 10) (Claude, Claude Opus 5.5)
+- Add a small state machine for sensor-fault handling (2.6, 2.7): suspend evaluation, flash red, emit a fault event, recheck every 10 s, and resume when valid. It must be testable with an injected clock. (task 11) (Claude, Claude Opus 5.5)

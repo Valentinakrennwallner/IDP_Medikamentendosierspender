@@ -41,3 +41,4 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Add ESP32 persistence component: calibration (tare, counts per gram) as versioned NVS blob with CRC-32, fail-closed load/save without fallback, NVS host mocks, with host tests (Claude Code, Claude Opus 5.5)
 - Mark task 8 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)
 - Add ESP32 serial calibration (task 9): calibration component with weight_calibrate() UART dialog, factor computation and reference weight parsing, weight_measure_raw_mean(), NVS erase only after explicit confirmation, with host tests (Claude Code, Claude Opus 5.5)
+- Mark task 9 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)

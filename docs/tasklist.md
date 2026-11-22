@@ -38,7 +38,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 6 | Result and fault payloads | protocol | done |
 | 7 | Gateway message dispatch | Pi | done |
 | 8 | Calibration data and NVS | ESP32 | done (Valentina) |
-| 9 | Serial calibration | ESP32 | in progress (Valentina) |
+| 9 | Serial calibration | ESP32 | done (Valentina) |
 | 10 | Measurement with retries | ESP32 | done (Johannes) |
 | 11 | Sensor-fault state | ESP32 | done (Johannes) |
 | 12 | Filling check | ESP32 | partial |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 7 done, 11 partial, 14 open.
+Summary: 8 done, 11 partial, 13 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -147,12 +147,16 @@ Calibration data and NVS. "Add persistence (NVS blob with version and checksum) 
 - Hardware test passed (2026-11-22): first start MISSING, tare measured, saved and loaded; after reset loaded at once with the same tare; 1-euro coin (7.5 g) measured as 7.49 g.
 - Follow-up: start the serial calibration when no valid calibration is loaded (task 9) and load the calibration at start-up before any evaluation (task 21).
 
-### 9. Serial calibration — in progress (Valentina)
+### 9. Serial calibration — done (Valentina)
 Prompt (original, unchanged):
 
 ```text
 Serial calibration. "Add weight_calibrate(): a serial UART dialog that measures the empty container and a reference weight, computes the factor, and stores it. Add a pure computation function with host tests."
 ```
+
+- Done: `code/esp32/components/calibration` (`weight_calibrate()` UART dialog, `calibration_compute_counts_per_gram()`, `calibration_parse_grams()`), `weight_measure_raw_mean()` in `components/weight`, `persistence_erase_and_init()` (only after typing `ERASE`), tests in `code/esp32/test/calibration_test.c`.
+- Hardware test passed (2026-11-22): dialog with a 2-euro coin (8.5 g), factor saved and reloaded, control measurement 8.497 g; cancelling with `q` saved nothing and kept the previous calibration; cross-check with 1-euro coin 7.48 g and 10-cent coin 4.09 g.
+- Follow-up: call `weight_calibrate()` at start-up when no valid calibration is loaded, before any evaluation (task 21).
 
 ### 10. Measurement with retries — done (Johannes)
 Prompt (original, unchanged):

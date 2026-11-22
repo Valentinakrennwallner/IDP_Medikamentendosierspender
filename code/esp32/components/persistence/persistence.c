@@ -233,6 +233,23 @@ persistence_result_t persistence_init(void)
 }
 
 /*
+ * Erase and re-initialise NVS; the caller is responsible for the explicit
+ * user confirmation.
+ * Design Document, Chapter 2, Section 2.2, and Chapter 6, Section 6.1,
+ * Requirement 2.8.
+ */
+persistence_result_t persistence_erase_and_init(void)
+{
+    persistence_result_t result = PERSISTENCE_STORAGE_ERROR;
+
+    if ((nvs_flash_erase() == ESP_OK) && (nvs_flash_init() == ESP_OK))
+    {
+        result = PERSISTENCE_OK;
+    }
+    return result;
+}
+
+/*
  * Read the calibration blob with nvs_get_blob() and validate it. Missing
  * data (namespace or key not found) is reported as PERSISTENCE_MISSING, all
  * other problems with their own result; *calibration stays unchanged.

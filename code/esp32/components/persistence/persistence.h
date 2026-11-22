@@ -49,6 +49,16 @@ typedef enum
 persistence_result_t persistence_init(void);
 
 /*
+ * Erase the whole NVS partition and initialise it again. This deletes the
+ * calibration and every other NVS entry (later also the pre-shared key).
+ * Only to be called after the user has explicitly confirmed it in the
+ * commissioning calibration; never automatically.
+ * Design Document, Chapter 2, Section 2.2, and Chapter 6, Section 6.1,
+ * Requirement 2.8.
+ */
+persistence_result_t persistence_erase_and_init(void);
+
+/*
  * Load the commissioning calibration (tare offset and counts per gram) from
  * NVS. *calibration is written only on PERSISTENCE_OK. Every other result
  * means that no valid calibration is available: the caller must not perform

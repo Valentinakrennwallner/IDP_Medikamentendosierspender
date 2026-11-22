@@ -178,6 +178,24 @@ if(BUILD_TESTING)
     target_link_libraries(persistence_test PRIVATE m)
     add_test(NAME persistence_tests COMMAND persistence_test)
 
+    add_executable(calibration_test
+        ../esp32/test/calibration_test.c
+        ../esp32/components/calibration/calibration.c
+    )
+    target_include_directories(calibration_test PRIVATE
+        ../esp32/test/mocks
+        ../esp32/components/weight
+        ../esp32/components/persistence
+        ../esp32/components/calibration
+    )
+    target_compile_options(calibration_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(calibration_test PRIVATE m)
+    add_test(NAME calibration_tests COMMAND calibration_test)
+
     add_executable(schedule_test
         test/schedule_test.c
         src/schedule/schedule.c

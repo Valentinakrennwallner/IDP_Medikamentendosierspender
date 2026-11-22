@@ -22,10 +22,12 @@ The 10-second recheck and the fault/resume decisions after
 fault indication (LED) and reporting, calibration persistence, and filling
 checks.
 
-`weight_measure_tare()` averages `WEIGHT_TARE_SAMPLE_COUNT` (10) raw samples
-of the empty container and returns the tare offset; a faulty sample aborts
-the measurement. It is part of the commissioning calibration (Requirement
-2.8); the caller stores the tare offset in NVS (`persistence` component).
+`weight_measure_raw_mean()` averages `WEIGHT_RAW_MEAN_SAMPLE_COUNT` (10) raw
+samples without calibration; a faulty sample aborts the measurement and the
+output stays unchanged. `weight_measure_tare()` uses it for the empty
+container and returns the tare offset; the commissioning calibration
+(Requirement 2.8, component `calibration`) also uses it for the reference
+weight and stores the result in NVS (`persistence` component).
 `WEIGHT_COUNTS_PER_GRAM` (17660 counts per gram) is the calibration factor of
 the assembled load cell, determined with a 1-euro coin (7.5 g) and verified
 with a 2-euro coin, a 10-cent coin and tablets to +-0.01 g. It is only the

@@ -14,7 +14,11 @@ Section 6.1, Requirement 2.8).
   (`ESP_ERR_NVS_NO_FREE_PAGES`, `ESP_ERR_NVS_NEW_VERSION_FOUND`) returns
   `PERSISTENCE_STORAGE_ERROR`, so the device stays fail-closed and the
   calibration and, later, the pre-shared key are never lost silently.
-  Whether to erase is decided by the commissioning calibration (task 9).
+- `persistence_erase_and_init()` erases the whole NVS partition
+  (`nvs_flash_erase()`) and initialises it again. This deletes the
+  calibration and every other NVS entry, later also the pre-shared key. It
+  is only called by the commissioning calibration (`weight_calibrate()`,
+  component `calibration`) after the user has explicitly typed `ERASE`.
 - `persistence_calibration_load()` reads and validates the calibration.
   `*calibration` is written only on `PERSISTENCE_OK`.
 - `persistence_calibration_save()` validates the calibration, writes the blob
@@ -56,8 +60,9 @@ big-endian:
 
 ## Not part of this component
 
-- Starting the serial calibration when no valid calibration is loaded, and
-  computing the factor (task 9, `weight_calibrate()`).
+- Computing the factor and the serial dialog (`weight_calibrate()` in the
+  component `calibration`). Starting it when no valid calibration is loaded
+  belongs to task 21.
 - Calling `persistence_init()` and `persistence_calibration_load()` at
   start-up before any evaluation (task 21, `app_main`).
 - Storing the pre-shared key (task 17); it can reuse `persistence_init()`.

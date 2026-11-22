@@ -21,8 +21,12 @@
  */
 #define WEIGHT_COUNTS_PER_GRAM 17660.0F
 
-/* Number of raw HX711 samples averaged for the tare offset. */
-#define WEIGHT_TARE_SAMPLE_COUNT 10U
+/*
+ * Number of raw HX711 samples averaged by weight_measure_raw_mean(), used
+ * for the tare offset and for the reference weight of the calibration.
+ */
+#define WEIGHT_RAW_MEAN_SAMPLE_COUNT 10U
+#define WEIGHT_TARE_SAMPLE_COUNT WEIGHT_RAW_MEAN_SAMPLE_COUNT
 
 /*
  * A weight is only valid once this many consecutive plausible measurements
@@ -106,10 +110,21 @@ weight_measure_status_t weight_measure(const weight_calibration_t *calibration,
                                        weight_measurement_t *measurement);
 
 /*
+ * Measure the mean of WEIGHT_RAW_MEAN_SAMPLE_COUNT raw HX711 samples (no
+ * calibration applied). Used by the commissioning calibration for the empty
+ * container and for the reference weight. Any faulty sample aborts the
+ * measurement and *mean_counts is left unchanged.
+ * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
+ * Requirements 2.1, 2.2 and 2.8.
+ */
+weight_result_t weight_measure_raw_mean(int32_t *mean_counts);
+
+/*
  * Measure the tare offset of the empty container as the mean of
- * WEIGHT_TARE_SAMPLE_COUNT raw HX711 samples. Part of the commissioning
- * calibration; the caller stores the result in NVS. Any faulty sample aborts
- * the measurement and *tare_offset_counts is left unchanged.
+ * WEIGHT_TARE_SAMPLE_COUNT raw HX711 samples (weight_measure_raw_mean()).
+ * Part of the commissioning calibration; the caller stores the result in
+ * NVS. Any faulty sample aborts the measurement and *tare_offset_counts is
+ * left unchanged.
  * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
  * Requirements 2.1, 2.2 and 2.8.
  */

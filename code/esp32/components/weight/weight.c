@@ -263,20 +263,20 @@ weight_measure_status_t weight_measure(const weight_calibration_t *calibration,
 }
 
 /*
- * Average WEIGHT_TARE_SAMPLE_COUNT raw samples of the empty container. The
- * sum is kept in 64 bit, so no overflow is possible for 24-bit samples; the
- * division truncates towards zero (at most one count, about 0.0001 g).
+ * Average WEIGHT_RAW_MEAN_SAMPLE_COUNT raw samples. The sum is kept in
+ * 64 bit, so no overflow is possible for 24-bit samples; the division
+ * truncates towards zero (at most one count, about 0.0001 g).
  * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
  * Requirements 2.1, 2.2 and 2.8.
  */
-weight_result_t weight_measure_tare(int32_t *tare_offset_counts)
+weight_result_t weight_measure_raw_mean(int32_t *mean_counts)
 {
     int64_t sum_counts = 0;
     int32_t raw_counts = 0;
     uint32_t sample;
     weight_result_t result = WEIGHT_RESULT_OK;
 
-    if (tare_offset_counts == NULL)
+    if (mean_counts == NULL)
     {
         return WEIGHT_RESULT_INVALID_ARGUMENT;
     }
@@ -286,7 +286,7 @@ weight_result_t weight_measure_tare(int32_t *tare_offset_counts)
     }
 
     for (sample = 0U;
-         (sample < WEIGHT_TARE_SAMPLE_COUNT) && (result == WEIGHT_RESULT_OK);
+         (sample < WEIGHT_RAW_MEAN_SAMPLE_COUNT) && (result == WEIGHT_RESULT_OK);
          ++sample)
     {
         result = weight_read_raw(&raw_counts);
@@ -298,10 +298,20 @@ weight_result_t weight_measure_tare(int32_t *tare_offset_counts)
 
     if (result == WEIGHT_RESULT_OK)
     {
-        *tare_offset_counts =
-            (int32_t)(sum_counts / (int64_t)WEIGHT_TARE_SAMPLE_COUNT);
+        *mean_counts =
+            (int32_t)(sum_counts / (int64_t)WEIGHT_RAW_MEAN_SAMPLE_COUNT);
     }
     return result;
+}
+
+/*
+ * The tare offset is the raw mean of the empty container.
+ * Design Document, Chapter 2, Section 2.1, and Chapter 6, Section 6.1,
+ * Requirements 2.1, 2.2 and 2.8.
+ */
+weight_result_t weight_measure_tare(int32_t *tare_offset_counts)
+{
+    return weight_measure_raw_mean(tare_offset_counts);
 }
 
 /*

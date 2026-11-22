@@ -5,5 +5,6 @@
 
 /* Host stand-in for the ESP-IDF NVS flash initialisation; implemented by the test. */
 esp_err_t nvs_flash_init(void);
+esp_err_t nvs_flash_erase(void);
 
 #endif

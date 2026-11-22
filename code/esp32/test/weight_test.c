@@ -308,10 +308,13 @@ static int test_measure_not_initialized(void)
     weight_calibration_t calibration = {0, 1000.0F};
     weight_measurement_t measurement = {0, 0.0F};
 
+    int32_t mean_counts = 42;
+
     set_sample(UINT32_C(1000));
     if ((weight_measure(&calibration, true, false, 0.0F, &measurement) !=
          WEIGHT_MEASURE_NOT_INITIALIZED) ||
-        (rising_edges != 0U))
+        (weight_measure_raw_mean(&mean_counts) != WEIGHT_RESULT_NOT_INITIALIZED) ||
+        (mean_counts != 42) || (rising_edges != 0U))
     {
         return 1;
     }
@@ -494,6 +497,42 @@ static int test_tare_aborts_on_faulty_sample(void)
     return 0;
 }
 
+/* Requirement 2.8: raw mean with the reference weight (tare + 7.5 g). */
+static int test_raw_mean_with_reference_weight(void)
+{
+    static const uint32_t samples[WEIGHT_RAW_MEAN_SAMPLE_COUNT] = {
+        400030U, 400040U, 400035U, 400035U, 400030U,
+        400040U, 400035U, 400035U, 400030U, 400040U};
+    int32_t mean_counts = 0;
+
+    set_samples(samples, WEIGHT_RAW_MEAN_SAMPLE_COUNT);
+    if ((weight_measure_raw_mean(&mean_counts) != WEIGHT_RESULT_OK) ||
+        (mean_counts != 400035) || (queued_next != queued_count) ||
+        (sensor_reads != WEIGHT_RAW_MEAN_SAMPLE_COUNT) ||
+        (weight_measure_raw_mean(NULL) != WEIGHT_RESULT_INVALID_ARGUMENT))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* The raw mean truncates towards zero, also for negative raw values. */
+static int test_raw_mean_negative_truncates(void)
+{
+    static const uint32_t samples[WEIGHT_RAW_MEAN_SAMPLE_COUNT] = {
+        0x00FFFFFFU, 0x00FFFFFEU, 0x00FFFFFFU, 0x00FFFFFEU, 0x00FFFFFFU,
+        0x00FFFFFEU, 0x00FFFFFFU, 0x00FFFFFEU, 0x00FFFFFFU, 0x00FFFFFEU};
+    int32_t mean_counts = 0;
+
+    set_samples(samples, WEIGHT_RAW_MEAN_SAMPLE_COUNT);
+    if ((weight_measure_raw_mean(&mean_counts) != WEIGHT_RESULT_OK) ||
+        (mean_counts != -1))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 /* The calibration constant converts 7.5 g worth of counts to 7.5 g. */
 static int test_calibration_constant(void)
 {
@@ -634,6 +673,8 @@ int main(void)
         (test_measure_invalid_arguments() != 0) ||
         (test_tare_is_mean_of_ten_samples() != 0) ||
         (test_tare_aborts_on_faulty_sample() != 0) ||
+        (test_raw_mean_with_reference_weight() != 0) ||
+        (test_raw_mean_negative_truncates() != 0) ||
         (test_calibration_constant() != 0) ||
         (test_stable_after_five_values() != 0) ||
         (test_spread_too_large() != 0) ||

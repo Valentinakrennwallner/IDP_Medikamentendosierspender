@@ -38,7 +38,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 6 | Result and fault payloads | protocol | done |
 | 7 | Gateway message dispatch | Pi | done |
 | 8 | Calibration data and NVS | ESP32 | done (Valentina) |
-| 9 | Serial calibration | ESP32 | open |
+| 9 | Serial calibration | ESP32 | in progress (Valentina) |
 | 10 | Measurement with retries | ESP32 | done (Johannes) |
 | 11 | Sensor-fault state | ESP32 | done (Johannes) |
 | 12 | Filling check | ESP32 | partial |
@@ -147,7 +147,7 @@ Calibration data and NVS. "Add persistence (NVS blob with version and checksum) 
 - Hardware test passed (2026-11-22): first start MISSING, tare measured, saved and loaded; after reset loaded at once with the same tare; 1-euro coin (7.5 g) measured as 7.49 g.
 - Follow-up: start the serial calibration when no valid calibration is loaded (task 9) and load the calibration at start-up before any evaluation (task 21).
 
-### 9. Serial calibration — open
+### 9. Serial calibration — in progress (Valentina)
 Prompt (original, unchanged):
 
 ```text

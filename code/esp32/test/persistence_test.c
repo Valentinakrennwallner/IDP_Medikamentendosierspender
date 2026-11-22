@@ -22,9 +22,12 @@ static int namespace_exists;
 static int blob_exists;
 static unsigned int set_blob_calls;
 static unsigned int open_handles;
+static unsigned int erase_calls;
+static unsigned int init_calls;
 
 /* Injected errors per NVS call (ESP_OK = no error). */
 static esp_err_t flash_init_error;
+static esp_err_t flash_erase_error;
 static esp_err_t open_error;
 static esp_err_t get_error;
 static esp_err_t set_error;
@@ -55,7 +58,10 @@ static void reset_store(void)
     blob_exists = 0;
     set_blob_calls = 0U;
     open_handles = 0U;
+    erase_calls = 0U;
+    init_calls = 0U;
     flash_init_error = ESP_OK;
+    flash_erase_error = ESP_OK;
     open_error = ESP_OK;
     get_error = ESP_OK;
     set_error = ESP_OK;
@@ -64,7 +70,22 @@ static void reset_store(void)
 
 esp_err_t nvs_flash_init(void)
 {
+    init_calls++;
     return flash_init_error;
+}
+
+/* Erasing removes the stored blob and the namespace. */
+esp_err_t nvs_flash_erase(void)
+{
+    erase_calls++;
+    if (flash_erase_error != ESP_OK)
+    {
+        return flash_erase_error;
+    }
+    namespace_exists = 0;
+    blob_exists = 0;
+    stored_length = 0U;
+    return ESP_OK;
 }
 
 /* Like ESP-IDF: opening a missing namespace read-only reports NOT_FOUND. */
@@ -198,6 +219,30 @@ static int test_init(void)
     CHECK(persistence_init() == PERSISTENCE_STORAGE_ERROR);
     flash_init_error = ESP_ERR_NVS_NEW_VERSION_FOUND;
     CHECK(persistence_init() == PERSISTENCE_STORAGE_ERROR);
+    CHECK(erase_calls == 0U);
+    return 0;
+}
+
+/* Explicit erase: deletes the calibration, then initialises NVS again. */
+static int test_erase_and_init(void)
+{
+    const weight_calibration_t saved = {0, 17660.0F};
+    weight_calibration_t loaded = {7, 7.0F};
+
+    reset_store();
+    CHECK(persistence_calibration_save(&saved) == PERSISTENCE_OK);
+    CHECK(persistence_erase_and_init() == PERSISTENCE_OK);
+    CHECK((erase_calls == 1U) && (init_calls == 1U));
+    CHECK(persistence_calibration_load(&loaded) == PERSISTENCE_MISSING);
+
+    reset_store();
+    flash_erase_error = ESP_FAIL;
+    CHECK(persistence_erase_and_init() == PERSISTENCE_STORAGE_ERROR);
+    CHECK(init_calls == 0U);
+
+    reset_store();
+    flash_init_error = ESP_ERR_NVS_NO_FREE_PAGES;
+    CHECK(persistence_erase_and_init() == PERSISTENCE_STORAGE_ERROR);
     return 0;
 }
 
@@ -380,6 +425,7 @@ static int test_invalid_arguments(void)
 int main(void)
 {
     if ((test_reference_crc() != 0) || (test_init() != 0) ||
+        (test_erase_and_init() != 0) ||
         (test_round_trip() != 0) || (test_blob_layout() != 0) ||
         (test_values_and_rounding() != 0) || (test_missing() != 0) ||
         (test_corrupt_data() != 0) || (test_save_rejects_invalid_values() != 0) ||

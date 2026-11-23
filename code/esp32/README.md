@@ -1,16 +1,78 @@
 # ESP32 firmware
 
-Build this project with ESP-IDF from this directory. The initial application
-only confirms startup; it does not read the sensor or evaluate doses.
+Build this project with ESP-IDF from this directory.
 
-Planned module boundaries:
+## Start-up (`main/app_main.c`)
 
-- `weight`: HX711 reads, calibration, filtering, and plausibility checks.
+1. RGB LED initialisation and self-test (red, green, blue).
+2. `persistence_init()` and `persistence_calibration_load()`. Any result
+   other than `PERSISTENCE_OK` counts as "no calibration".
+3. Without a valid calibration the serial calibration (`weight_calibrate()`)
+   runs and no evaluation takes place (fail closed, Requirement 2.8). After a
+   successful calibration the ESP32 restarts (`esp_restart()`) so the new
+   values are loaded through the normal path. After a cancellation or an
+   error the red LED flashes (`LED_STATUS_FAULT_FLASH`) and the dialog is
+   offered again after 1 s.
+4. With a valid calibration the weight-measurement thread is started. If it
+   cannot be started, the red LED flashes and nothing is evaluated.
+
+Deviation from the flowchart (Design Document, Chapter 3): the calibration is
+loaded before the BLE connection, because BLE is not wired into `app_main`
+yet. The order is revisited when BLE is added (task 21).
+
+## Threads (Design Document, Chapter 2, Section 2.3, Table 2)
+
+Priorities in `main/app_tasks.h`: "high" = 5, "medium" = 4, "low" = 2.
+
+| Thread | Priority | State |
+|---|---|---|
+| Weight measurement (`main/weight_task.c`) | 5 | implemented, stack 4096 bytes |
+| Dose evaluation and LED status display | 5 | open (task 21) |
+| Bluetooth communication | 4 | open (task 21) |
+| Heartbeat | 4 | open (tasks 19, 21) |
+| Logging | 2 | open (task 21) |
+
+### Weight-measurement thread
+
+- A periodic `esp_timer` (1 s, `WEIGHT_TASK_PERIOD_MS`) only notifies the
+  thread. The period is not given in the Design Document; the group chose
+  1 s, so a stable weight (5 measurements) is available after about 5 s. The
+  timer callback runs in the esp_timer task (`ESP_TIMER_TASK`), not in an
+  interrupt.
+- Each cycle: `weight_measure()` (with the two retries of Requirement 2.5),
+  then `components/weight_monitor` (stability window, sensor-fault state,
+  reference for the 5 g check).
+- Sensor fault: `LED_STATUS_FAULT_FLASH`, measurement only every 10 s, the
+  stable-weight mailbox is emptied. Valid values again: `LED_STATUS_OFF` until
+  the dose evaluation sets the LED, and the log line "Sensor recovered:
+  evaluation resumed" (without weight).
+- Interface for the dose evaluation: `weight_task_get_stable()` returns the
+  newest stable weight from a one-element queue (`xQueueOverwrite()`). No
+  weight is delivered during a sensor fault.
+- Weights are never logged (Requirement 4.4).
+
+**Until the clock is integrated (task 20), every weight change above 5 g
+counts as a sensor fault.** Without a clock the intake window is unknown, and
+the thread treats the time as "outside an intake window" (fail closed), so
+the 5 g change check of Requirement 2.4 always applies. A real removal
+therefore causes a 10 s sensor fault; afterwards the new weight is accepted.
+
+Stubs marked `TODO(task 21)` in `main/weight_task.c`: intake window (clock
+and schedule), FAULT report to the Raspberry Pi (BLE, task 15). Not yet
+implemented: dose evaluation (`dosing_evaluate()`), result buffer, BLE.
+
+## Modules
+
+- `weight`: HX711 reads, calibration constants, plausibility checks and
+  stability window.
+- `weight_monitor`: per-cycle logic of the weight-measurement thread.
+- `sensor_fault`: sensor-fault state machine (Requirements 2.6, 2.7).
+- `calibration`: serial commissioning calibration (Requirement 2.8).
+- `persistence`: calibration data in NVS.
 - `dosing`: schedule table and dose-state evaluation.
 - `led`: RGB status handling and startup self-test.
 - `ble`: NimBLE transport, heartbeat, reconnect, and buffered results.
 - `secure_channel`: authenticated key agreement, encryption, and replay checks.
-- `persistence`: calibration and commissioning data in NVS.
 
 Keep dose evaluation and user-visible safety feedback local to the ESP32, as
 specified in the documentation under "Software Architecture".

@@ -161,6 +161,26 @@ if(BUILD_TESTING)
     )
     add_test(NAME sensor_fault_tests COMMAND sensor_fault_test)
 
+    add_executable(weight_monitor_test
+        ../esp32/test/weight_monitor_test.c
+        ../esp32/components/weight_monitor/weight_monitor.c
+        ../esp32/components/sensor_fault/sensor_fault.c
+        ../esp32/components/weight/weight.c
+    )
+    target_include_directories(weight_monitor_test PRIVATE
+        ../esp32/test/mocks
+        ../esp32/components/weight
+        ../esp32/components/sensor_fault
+        ../esp32/components/weight_monitor
+    )
+    target_compile_options(weight_monitor_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(weight_monitor_test PRIVATE m)
+    add_test(NAME weight_monitor_tests COMMAND weight_monitor_test)
+
     add_executable(persistence_test
         ../esp32/test/persistence_test.c
         ../esp32/components/persistence/persistence.c

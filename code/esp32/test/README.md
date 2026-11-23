@@ -27,6 +27,20 @@ recheck, a new report for a second fault, programming errors handled as a
 fault, and missing arguments (Requirements 2.6 and 2.7). It is built and run
 by the host CMake project in `../raspberry-pi` (`sensor_fault_tests`).
 
+`weight_monitor_test.c` checks the per-cycle logic of the weight-measurement
+thread (`components/weight_monitor`) with injected measurement results and an
+injected millisecond clock: a stable weight only after 5 consistent
+measurements, a short outlier, the last plausible measurement as reference of
+the 5 g check, a sensor fault that asks once for the flashing red LED and the
+fault report and drops the reference, the 10 s recheck, the recovery signalled once and
+the LED switched off on resume, with 5 fresh measurements needed for the next stable weight, a
+second fault reported again, programming errors handled as a fault, and
+missing arguments (Requirements 2.4 to 2.7). `weight.c` is linked for the
+stability window only; its HX711 functions are link-only stubs that abort if
+called. It is built and run by the host CMake project in `../raspberry-pi`
+(`weight_monitor_tests`). The FreeRTOS task (`main/weight_task.c`) and
+`app_main()` are tested on the hardware.
+
 `persistence_test.c` checks the calibration storage (`components/persistence`)
 against an in-memory NVS (`mocks/nvs.h`, `mocks/nvs_flash.h`,
 `mocks/esp_err.h`) in which every call can be made to fail: save and load of

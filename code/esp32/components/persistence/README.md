@@ -62,9 +62,10 @@ big-endian:
 
 - Computing the factor and the serial dialog (`weight_calibrate()` in the
   component `calibration`). Starting it when no valid calibration is loaded
-  belongs to task 21.
+  is done in `main/app_main.c` (task 21).
 - Calling `persistence_init()` and `persistence_calibration_load()` at
-  start-up before any evaluation (task 21, `app_main`).
+  start-up before any evaluation (`main/app_main.c`, task 21). Every result
+  other than `PERSISTENCE_OK` counts as "no calibration".
 - Storing the pre-shared key (task 17); it can reuse `persistence_init()`.
 
 ## Tests

@@ -88,8 +88,9 @@ and is not written with the ESP-IDF logging functions.
 ## Not part of this component
 
 Calling `weight_calibrate()` at start-up when `persistence_calibration_load()`
-does not return `PERSISTENCE_OK`, before any evaluation, belongs to task 21
-(`app_main`).
+does not return `PERSISTENCE_OK`, before any evaluation, is done in
+`main/app_main.c` (task 21): after success the ESP32 restarts, after a
+cancellation or error the red LED flashes and the dialog is offered again.
 
 ## Tests
 

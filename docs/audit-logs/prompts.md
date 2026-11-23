@@ -42,3 +42,5 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Mark task 8 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)
 - Add ESP32 serial calibration (task 9): calibration component with weight_calibrate() UART dialog, factor computation and reference weight parsing, weight_measure_raw_mean(), NVS erase only after explicit confirmation, with host tests (Claude Code, Claude Opus 5.5)
 - Mark task 9 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)
+- Add ESP32 weight-measurement thread and app_main start-up (task 21, weight part): calibration load or serial calibration (fail closed), 1 s measurement with stability window and sensor-fault state, stable-weight mailbox for the dose evaluation, weight_monitor logic with host tests (Claude Code, Claude Opus 5.5)
+- Log "Sensor recovered: evaluation resumed" when the weight task leaves a sensor fault (sensor_recovered flag in weight_monitor, host test), note task 21 weight part hardware test in tasklist (Claude Code, Claude Opus 5.5)

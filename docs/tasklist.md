@@ -50,7 +50,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 18 | Start-up connection | ESP32 | partial |
 | 19 | Heartbeat and reconnect task | ESP32 | partial |
 | 20 | ESP32 clock | ESP32 | open |
-| 21 | FreeRTOS tasks and app_main | ESP32 | open |
+| 21 | FreeRTOS tasks and app_main | ESP32 | in progress (Valentina) - weight task part |
 | 22 | Config loader | Pi | partial |
 | 23 | Schedule build | Pi | partial |
 | 24 | Reminders | Pi | partial |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 8 done, 11 partial, 13 open.
+Summary: 8 done, 11 partial, 1 in progress, 12 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -259,14 +259,16 @@ Prompt (original, unchanged):
 ESP32 clock. Add a time source set from the received Unix time plus esp_timer. Provide 'current row' and 'window active' queries for the table, and handle the 'no time' state (3.3).
 ```
 
-### 21. FreeRTOS tasks and app_main — open
+### 21. FreeRTOS tasks and app_main — in progress (Valentina) - weight task part
 Prompt (original, unchanged):
 
 ```text
 ESP32 Create the FreeRTOS tasks and priorities from Design Document Table 2.3 (weight and dose high; BLE and heartbeat medium; logging low). Interrupts only notify tasks. Replace the app_main stub and keep the LED self-test first.
 ```
 
-- Note: `app_main()` only runs the LED self-test.
+- Weight task part (Valentina): `app_main()` runs the LED self-test, loads the calibration from NVS and otherwise runs `weight_calibrate()` without evaluation (restart after success, flashing red and a new dialog after a cancellation or error); weight-measurement thread every 1 s (priority 5, 4096 bytes) with stability window, sensor-fault state and `LED_STATUS_FAULT_FLASH` (`code/esp32/main/weight_task.c`, logic in `components/weight_monitor`, tests in `code/esp32/test/weight_monitor_test.c`); stable weights for the dose evaluation through `weight_task_get_stable()`.
+- Hardware test of the weight task part passed (2026-11-23): start with the calibration from NVS without dialog, weight task running; weight jump above 5 g -> red LED flashes, off again after the recheck; HX711 DT disconnected -> red LED flashes continuously, reconnected -> LED off. Task 21 stays in progress (BLE, clock, buffer and dose evaluation open).
+- Still open: BLE connection and schedule/time reception, ESP32 clock and intake window (task 20; until then every change above 5 g counts as a sensor fault), FAULT report to the Raspberry Pi (task 15), result buffer, dose-evaluation thread (`dosing_evaluate()`), heartbeat and logging threads.
 
 ### 22. Config loader — partial
 Prompt (original, unchanged):

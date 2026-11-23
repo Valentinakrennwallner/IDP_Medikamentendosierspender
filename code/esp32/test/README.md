@@ -41,6 +41,19 @@ called. It is built and run by the host CMake project in `../raspberry-pi`
 (`weight_monitor_tests`). The FreeRTOS task (`main/weight_task.c`) and
 `app_main()` are tested on the hardware.
 
+`wall_clock_test.c` checks the ESP32 clock (`components/wall_clock`) with an
+injected millisecond counter: the state "no time" before a time is set,
+advancing with the counter, a new time on reconnect, the accepted range
+2026-01-01 to 2099-12-31 UTC (an invalid time returns to "no time"), the
+CET/CEST conversion at both summer-time switches, a leap day and the range
+limits (expected values from the IANA zone Europe/Vienna), the current row
+and the intake window at the Table 6 boundaries, the day end, the day
+change at local midnight, a time set back to the previous day, a missing or
+invalid table and missing arguments (Requirements 1.6, 2.4, 2.11, 3.2, 3.3).
+It is built and run by the host CMake project in `../raspberry-pi`
+(`wall_clock_tests`). The esp_timer binding (`wall_clock_esp32.c`) is tested
+on the hardware.
+
 `persistence_test.c` checks the calibration storage (`components/persistence`)
 against an in-memory NVS (`mocks/nvs.h`, `mocks/nvs_flash.h`,
 `mocks/esp_err.h`) in which every call can be made to fail: save and load of

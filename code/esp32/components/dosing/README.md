@@ -19,6 +19,9 @@ dependencies, so it is unit-tested on the host (`dosing_tests`).
   - above W_after after an ended window (gap row): `DOSING_RESULT_MISSED`;
   - above W_after before the first window (initial row):
     `DOSING_RESULT_UNEXPECTED_INCREASE`.
+- `dosing_table_find_row()` returns the row that contains a time (from
+  inclusive, to exclusive), or NULL at or after the end of the last window.
+  `dosing_evaluate()` and the ESP32 clock (`components/wall_clock`) use it.
 - `dosing_result_is_deviation()` marks results that must be reported to the
   Raspberry Pi as a warning.
 

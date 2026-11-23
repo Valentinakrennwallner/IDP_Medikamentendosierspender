@@ -250,6 +250,24 @@ if(BUILD_TESTING)
     )
     add_test(NAME dosing_tests COMMAND dosing_test)
 
+    add_executable(wall_clock_test
+        ../esp32/test/wall_clock_test.c
+        ../esp32/components/wall_clock/wall_clock.c
+        ../esp32/components/dosing/dosing.c
+        ../protocol/src/startup_message.c
+    )
+    target_include_directories(wall_clock_test PRIVATE
+        ../protocol/include
+        ../esp32/components/dosing
+        ../esp32/components/wall_clock
+    )
+    target_compile_options(wall_clock_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME wall_clock_tests COMMAND wall_clock_test)
+
     add_executable(report_message_test
         test/report_message_test.c
         ../protocol/src/report_message.c

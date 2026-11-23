@@ -49,7 +49,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 17 | PSK commissioning | ESP32 | open |
 | 18 | Start-up connection | ESP32 | partial |
 | 19 | Heartbeat and reconnect task | ESP32 | partial |
-| 20 | ESP32 clock | ESP32 | open |
+| 20 | ESP32 clock | ESP32 | done (Valentina) |
 | 21 | FreeRTOS tasks and app_main | ESP32 | in progress (Valentina) - weight task part |
 | 22 | Config loader | Pi | partial |
 | 23 | Schedule build | Pi | partial |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 8 done, 11 partial, 1 in progress, 12 open.
+Summary: 9 done, 11 partial, 1 in progress, 11 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -252,12 +252,16 @@ ESP32 Implement Heartbeat and reconnect task. Wire heartbeat_client to the trans
 
 - Note: `heartbeat_client` exists with tests; the task and wiring are missing.
 
-### 20. ESP32 clock — open
+### 20. ESP32 clock — done (Valentina)
 Prompt (original, unchanged):
 
 ```text
 ESP32 clock. Add a time source set from the received Unix time plus esp_timer. Provide 'current row' and 'window active' queries for the table, and handle the 'no time' state (3.3).
 ```
+
+- Implemented: `code/esp32/components/wall_clock` (pure logic with injected monotonic time, Austrian local time CET/CEST with the EU summer-time rule, accepted range 2026-01-01 to 2099-12-31 UTC, state "no time", current row, intake window, day end and day change) and the ESP32 binding with esp_timer (`wall_clock_service_*`); `dosing_table_find_row()` taken out of `dosing_evaluate()`; `weight_task_intake_window_active()` asks the clock. Tests in `code/esp32/test/wall_clock_test.c` and `dosing_test.c`.
+- Hardware test: together with task 18, which sets the time from the STARTUP message (`wall_clock_service_set_unix_time()`); until then nothing sets the time on the hardware.
+- Follow-up: the table of expected weights is registered after the filling check in task 21 (`wall_clock_service_set_table()`). Until then no intake window is active.
 
 ### 21. FreeRTOS tasks and app_main — in progress (Valentina) - weight task part
 Prompt (original, unchanged):
@@ -278,6 +282,7 @@ Raspberry Pi Config loader. Add schedule_load() (1.9, 1.10, 4.6, 4.7): strict JS
 ```
 
 - Note: `schedule_load()` and `schedule_parse()` exist. Check the file-mode-600 check and the alert.
+- Follow-up from task 20: reject intake windows between 02:00 and 03:00 local time. On the summer-time switch day this hour does not exist on the ESP32 clock, and on the winter-time switch day it is passed twice.
 
 ### 23. Schedule build — partial
 Prompt (original, unchanged):

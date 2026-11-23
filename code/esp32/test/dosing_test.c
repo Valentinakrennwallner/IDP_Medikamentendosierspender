@@ -228,6 +228,50 @@ static int test_day_end(void)
     return (failures != 0) ? 1 : 0;
 }
 
+/*
+ * Requirement 2.11, Table 6: dosing_table_find_row() returns the row whose
+ * interval contains the time (from inclusive, to exclusive) and NULL at or
+ * after the end of the last window or for a missing or invalid table.
+ */
+static int test_find_row(void)
+{
+    dosing_table_t table;
+    const dosing_row_t *row;
+
+    if (create_table6(&table) != 0)
+    {
+        return 1;
+    }
+    row = dosing_table_find_row(&table, 0U);
+    if ((row != &table.rows[0]) || (row->phase != DOSING_PHASE_OUTSIDE_WINDOW))
+    {
+        return 1;
+    }
+    if (dosing_table_find_row(&table, HOURS(7) - 1U) != &table.rows[0])
+    {
+        return 1;
+    }
+    row = dosing_table_find_row(&table, HOURS(7));
+    if ((row != &table.rows[1]) || (row->phase != DOSING_PHASE_INTAKE_WINDOW))
+    {
+        return 1;
+    }
+    if ((dosing_table_find_row(&table, HOURS(8) - 1U) != &table.rows[1]) ||
+        (dosing_table_find_row(&table, HOURS(8)) != &table.rows[2]) ||
+        (dosing_table_find_row(&table, HOURS(19) - 1U) != &table.rows[5]))
+    {
+        return 1;
+    }
+    if ((dosing_table_find_row(&table, HOURS(19)) != NULL) ||
+        (dosing_table_find_row(&table, DOSING_SECONDS_PER_DAY) != NULL) ||
+        (dosing_table_find_row(NULL, HOURS(7)) != NULL))
+    {
+        return 1;
+    }
+    table.valid = false;
+    return (dosing_table_find_row(&table, HOURS(7)) != NULL) ? 1 : 0;
+}
+
 /* Adjacent windows have no gap row; an intake at midnight has no initial row. */
 static int test_row_layout_edge_cases(void)
 {
@@ -350,6 +394,7 @@ int main(void)
         {"late_intake", test_late_intake},
         {"window_boundaries", test_window_boundaries},
         {"day_end", test_day_end},
+        {"find_row", test_find_row},
         {"row_layout_edge_cases", test_row_layout_edge_cases},
         {"invalid_schedules", test_invalid_schedules},
         {"invalid_evaluation_arguments", test_invalid_evaluation_arguments},

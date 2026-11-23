@@ -51,15 +51,20 @@ Priorities in `main/app_tasks.h`: "high" = 5, "medium" = 4, "low" = 2.
   weight is delivered during a sensor fault.
 - Weights are never logged (Requirement 4.4).
 
-**Until the clock is integrated (task 20), every weight change above 5 g
-counts as a sensor fault.** Without a clock the intake window is unknown, and
-the thread treats the time as "outside an intake window" (fail closed), so
-the 5 g change check of Requirement 2.4 always applies. A real removal
-therefore causes a 10 s sensor fault; afterwards the new weight is accepted.
+The intake window for the 5 g change check (Requirement 2.4) comes from the
+ESP32 clock (`components/wall_clock`,
+`wall_clock_service_intake_window_active()`). Without a valid time (state
+"no time", Requirement 3.3), without a registered table of expected weights,
+or after the day end it is "outside an intake window" (fail closed).
 
-Stubs marked `TODO(task 21)` in `main/weight_task.c`: intake window (clock
-and schedule), FAULT report to the Raspberry Pi (BLE, task 15). Not yet
-implemented: dose evaluation (`dosing_evaluate()`), result buffer, BLE.
+**Until the time is set from the STARTUP message (task 18) and the table is
+registered after the filling check (task 21), every weight change above 5 g
+counts as a sensor fault.** A real removal therefore causes a 10 s sensor
+fault; afterwards the new weight is accepted.
+
+Stub marked `TODO(task 21)` in `main/weight_task.c`: FAULT report to the
+Raspberry Pi (BLE, task 15). Not yet implemented: dose evaluation
+(`dosing_evaluate()`), result buffer, BLE.
 
 ## Modules
 
@@ -70,6 +75,8 @@ implemented: dose evaluation (`dosing_evaluate()`), result buffer, BLE.
 - `calibration`: serial commissioning calibration (Requirement 2.8).
 - `persistence`: calibration data in NVS.
 - `dosing`: schedule table and dose-state evaluation.
+- `wall_clock`: ESP32 clock (Unix time from the Raspberry Pi plus esp_timer,
+  Austrian local time, state "no time", current row, intake window).
 - `led`: RGB status handling and startup self-test.
 - `ble`: NimBLE transport, heartbeat, reconnect, and buffered results.
 - `secure_channel`: authenticated key agreement, encryption, and replay checks.

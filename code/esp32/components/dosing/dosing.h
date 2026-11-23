@@ -101,6 +101,14 @@ int dosing_evaluate(const dosing_table_t *table,
                     int32_t weight_milligrams,
                     dosing_result_t *result);
 
+/*
+ * Return the row of the table that contains now_seconds (seconds since local
+ * midnight; from inclusive, to exclusive), or NULL if the table is missing or
+ * invalid or the time lies at or after the end of the last intake window.
+ * Requirement 2.11, Table 6.
+ */
+const dosing_row_t *dosing_table_find_row(const dosing_table_t *table, uint32_t now_seconds);
+
 /* True for results that must be reported as a warning (Requirement 2.13). */
 bool dosing_result_is_deviation(dosing_result_t result);
 

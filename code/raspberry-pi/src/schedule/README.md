@@ -41,6 +41,9 @@ A configuration is rejected if any of these is violated:
   parsing happens once at start-up, outside the safety-critical runtime path.
 - Times are seconds since **local** midnight. The caller must convert the NTP
   (UTC) system time to local time before calling `schedule_check_due()`.
+- Local time is **Austrian time (CET/CEST)**. The ESP32 converts the received
+  Unix time with the same rule (`code/esp32/components/wall_clock`), so the
+  intake times in the configuration file must be Austrian local time too.
 - `schedule_load()` uses a static buffer and is not reentrant; call it once at
   start-up. The buffer is cleared afterwards.
 - The minimum tablet weight per intake is calculated but not yet sent to the

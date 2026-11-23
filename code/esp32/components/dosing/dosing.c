@@ -188,6 +188,33 @@ bool dosing_filling_is_correct(const dosing_table_t *table, int32_t weight_milli
 }
 
 /*
+ * Return the row of the table that contains now_seconds (from inclusive, to
+ * exclusive), or NULL if the table is missing or invalid or the time lies at
+ * or after the end of the last intake window. Used by dosing_evaluate() and
+ * by the ESP32 clock (current row, intake window active).
+ * Design Document, Chapter 3, Table 6, and Chapter 6, Section 6.1,
+ * Requirement 2.11.
+ */
+const dosing_row_t *dosing_table_find_row(const dosing_table_t *table, uint32_t now_seconds)
+{
+    const dosing_row_t *row = NULL;
+    size_t index;
+
+    if ((table != NULL) && table->valid && (table->row_count <= DOSING_MAX_ROWS))
+    {
+        for (index = 0U; (index < table->row_count) && (row == NULL); index++)
+        {
+            if ((now_seconds >= table->rows[index].from_seconds) &&
+                (now_seconds < table->rows[index].to_seconds))
+            {
+                row = &table->rows[index];
+            }
+        }
+    }
+    return row;
+}
+
+/*
  * Evaluate the measured weight against the row for the current time.
  * First compare with W_after: a match means the dose was taken, also outside
  * an intake window (late intake). Otherwise, inside an intake window W_before
@@ -208,7 +235,6 @@ int dosing_evaluate(const dosing_table_t *table,
 {
     int status = 0;
     const dosing_row_t *row = NULL;
-    size_t index;
 
     if ((table == NULL) || (result == NULL) || (!table->valid) ||
         (now_seconds >= DOSING_SECONDS_PER_DAY))
@@ -224,14 +250,7 @@ int dosing_evaluate(const dosing_table_t *table,
     }
     else
     {
-        for (index = 0U; (index < table->row_count) && (row == NULL); index++)
-        {
-            if ((now_seconds >= table->rows[index].from_seconds) &&
-                (now_seconds < table->rows[index].to_seconds))
-            {
-                row = &table->rows[index];
-            }
-        }
+        row = dosing_table_find_row(table, now_seconds);
 
         if (row == NULL)
         {

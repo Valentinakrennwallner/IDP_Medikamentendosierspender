@@ -11,10 +11,13 @@
  * in an interrupt; it does nothing but notify, as Section 2.3 requires of
  * the interrupt routine.
  *
- * Still open in task 21 (marked "TODO(task 21)" below): clock and schedule
- * (intake window), FAULT report over BLE (also task 15), dose evaluation
- * (dosing_evaluate() as consumer of weight_task_get_stable()) and the
- * result buffer.
+ * The intake window comes from the ESP32 clock (components/wall_clock,
+ * task 20); without a valid time or table it is "no window" (fail closed).
+ *
+ * Still open in task 21 (marked "TODO(task 21)" below): FAULT report over
+ * BLE (also task 15), dose evaluation (dosing_evaluate() as consumer of
+ * weight_task_get_stable(), it also registers the table with the clock) and
+ * the result buffer.
  *
  * Weights are health data and are never logged (Design Document, Chapter 6,
  * Section 6.2, Requirement 4.4).
@@ -30,6 +33,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "led_status.h"
+#include "wall_clock_service.h"
 #include "weight_monitor.h"
 
 static const char *WEIGHT_TASK_LOG_TAG = "weight_task";
@@ -42,14 +46,16 @@ static esp_timer_handle_t period_timer = NULL;
 
 /*
  * Whether an intake window is active, for the 5 g change check of
- * weight_measure(). TODO(task 21): derive from the clock and the table of
- * expected weights. Until then "no window" is returned (fail closed): every
- * weight change above 5 g counts as a sensor fault.
- * Design Document, Chapter 6, Section 6.1, Requirements 2.4 and 2.11.
+ * weight_measure(): asks the ESP32 clock with the registered table of
+ * expected weights. Without a valid time ("no time", Requirement 3.3),
+ * without a registered table or after the day end the result is "no
+ * window" (fail closed), so every weight change above 5 g counts as a
+ * sensor fault. Design Document, Chapter 6, Section 6.1, Requirements 2.4,
+ * 2.11 and 3.3.
  */
 static bool weight_task_intake_window_active(void)
 {
-    return false;
+    return wall_clock_service_intake_window_active();
 }
 
 /*

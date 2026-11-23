@@ -268,6 +268,22 @@ if(BUILD_TESTING)
     )
     add_test(NAME wall_clock_tests COMMAND wall_clock_test)
 
+    add_executable(report_buffer_test
+        ../esp32/test/report_buffer_test.c
+        ../esp32/components/report_buffer/report_buffer.c
+        ../protocol/src/report_message.c
+    )
+    target_include_directories(report_buffer_test PRIVATE
+        ../protocol/include
+        ../esp32/components/report_buffer
+    )
+    target_compile_options(report_buffer_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    add_test(NAME report_buffer_tests COMMAND report_buffer_test)
+
     add_executable(report_message_test
         test/report_message_test.c
         ../protocol/src/report_message.c

@@ -44,7 +44,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 12 | Filling check | ESP32 | partial |
 | 13 | Expected-weight table | ESP32 | partial |
 | 14 | Dose evaluation | ESP32 | partial |
-| 15 | Result reporting and buffering | ESP32 | open |
+| 15 | Result reporting and buffering | ESP32 | done (Valentina) |
 | 16 | Day end and deep sleep | ESP32 | open |
 | 17 | PSK commissioning | ESP32 | open |
 | 18 | Start-up connection | ESP32 | partial |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 9 done, 11 partial, 1 in progress, 11 open.
+Summary: 10 done, 11 partial, 1 in progress, 10 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -209,12 +209,17 @@ Dose evaluation. "Add pure dose_evaluate() (2.12, 2.13, 1.8) returning status an
   `DOSING_MIN_TABLET_WEIGHT_MILLIGRAMS` (100 mg) instead of the real tablet weight
   from the startup message.
 
-### 15. Result reporting and buffering — open
+### 15. Result reporting and buffering — done (Valentina)
 Prompt (original, unchanged):
 
 ```text
 Result reporting and buffering. "Add a fixed-size ring buffer of results (3.2). Report each new result once; buffer while disconnected; flush in order after reconnect. Test overflow behaviour and an exactly-once guarantee."
 ```
+
+- Implemented: `code/esp32/components/report_buffer` (127 RESULT/FAULT/DAY_END reports, oldest dropped on overflow, report sequence number assigned at the first send attempt and kept for a resend, send function `report_buffer_send_fn`) and the ESP32 binding with spinlock (`report_buffer_service_*`); the weight task queues the sensor fault (active and cleared). Tests in `code/esp32/test/report_buffer_test.c`.
+- Hardware test: together with tasks 18/19 (BLE), which provide the send function; until then the reports only stay in the buffer.
+- Known limitation: the Raspberry Pi does not acknowledge reports, so a report lost on the air when the connection breaks is not resent (see the component README).
+- Follow-up: the BLE transport provides the send function and calls `report_buffer_service_flush()` after every (re)connect (tasks 18, 19); the dose evaluation queues the RESULT reports (task 21).
 
 ### 16. Day end and deep sleep — open
 Prompt (original, unchanged):
@@ -224,6 +229,7 @@ Day end and deep sleep. "Add the end-of-day sequence (1.6, 1.7): last-row check,
 ```
 
 - Note: the results `DOSING_RESULT_DAY_ENDED_OK` and `DOSING_RESULT_DAY_ENDED_MISSED` exist.
+- Follow-up from task 15: the report buffer is RAM only and is lost in deep sleep. If there is no connection at the end of the day, the buffered reports (including the missed dose and DAY_END) must be sent before deep sleep, e.g. by waiting for the reconnect.
 
 ### 17. PSK commissioning — open
 Prompt (original, unchanged):

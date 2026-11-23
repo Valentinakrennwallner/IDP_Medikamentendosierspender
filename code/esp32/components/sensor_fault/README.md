@@ -47,4 +47,5 @@ if (sensor_fault_measurement_due(&fault, now_ms))
 Not part of this component: the LED and BLE calls and the FreeRTOS task. The
 weight-measurement thread uses this state machine through
 `components/weight_monitor` (`main/weight_task.c`, task 21 of
-`docs/tasklist.md`); the FAULT report over BLE is still a stub.
+`docs/tasklist.md`); the FAULT report (active and cleared) is queued in
+`components/report_buffer`.

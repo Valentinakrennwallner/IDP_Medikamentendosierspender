@@ -46,6 +46,10 @@ Priorities in `main/app_tasks.h`: "high" = 5, "medium" = 4, "low" = 2.
   stable-weight mailbox is emptied. Valid values again: `LED_STATUS_OFF` until
   the dose evaluation sets the LED, and the log line "Sensor recovered:
   evaluation resumed" (without weight).
+- Start and end of a sensor fault are queued as FAULT reports
+  (`REPORT_STATUS_SENSOR_FAULT`, active / cleared) in the report buffer
+  (`components/report_buffer`); they are sent by the BLE thread now or after
+  the reconnect.
 - Interface for the dose evaluation: `weight_task_get_stable()` returns the
   newest stable weight from a one-element queue (`xQueueOverwrite()`). No
   weight is delivered during a sensor fault.
@@ -62,9 +66,9 @@ registered after the filling check (task 21), every weight change above 5 g
 counts as a sensor fault.** A real removal therefore causes a 10 s sensor
 fault; afterwards the new weight is accepted.
 
-Stub marked `TODO(task 21)` in `main/weight_task.c`: FAULT report to the
-Raspberry Pi (BLE, task 15). Not yet implemented: dose evaluation
-(`dosing_evaluate()`), result buffer, BLE.
+Not yet implemented: dose evaluation (`dosing_evaluate()`, which also queues
+the RESULT reports) and the BLE thread that sends the buffered reports
+(tasks 18, 19).
 
 ## Modules
 
@@ -75,6 +79,8 @@ Raspberry Pi (BLE, task 15). Not yet implemented: dose evaluation
 - `calibration`: serial commissioning calibration (Requirement 2.8).
 - `persistence`: calibration data in NVS.
 - `dosing`: schedule table and dose-state evaluation.
+- `report_buffer`: ring buffer of RESULT, FAULT and DAY_END reports
+  (exactly once, in order, buffered while disconnected).
 - `wall_clock`: ESP32 clock (Unix time from the Raspberry Pi plus esp_timer,
   Austrian local time, state "no time", current row, intake window).
 - `led`: RGB status handling and startup self-test.

@@ -14,10 +14,13 @@
  * The intake window comes from the ESP32 clock (components/wall_clock,
  * task 20); without a valid time or table it is "no window" (fail closed).
  *
- * Still open in task 21 (marked "TODO(task 21)" below): FAULT report over
- * BLE (also task 15), dose evaluation (dosing_evaluate() as consumer of
- * weight_task_get_stable(), it also registers the table with the clock) and
- * the result buffer.
+ * Sensor-fault start and end are queued as FAULT reports in the report
+ * buffer (components/report_buffer, task 15); the BLE thread sends them
+ * (tasks 18 and 19).
+ *
+ * Still open in task 21: dose evaluation (dosing_evaluate() as consumer of
+ * weight_task_get_stable(); it also registers the table with the clock and
+ * queues the RESULT reports).
  *
  * Weights are health data and are never logged (Design Document, Chapter 6,
  * Section 6.2, Requirement 4.4).
@@ -33,6 +36,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "led_status.h"
+#include "report_buffer_service.h"
 #include "wall_clock_service.h"
 #include "weight_monitor.h"
 
@@ -59,24 +63,33 @@ static bool weight_task_intake_window_active(void)
 }
 
 /*
- * Report the start of a sensor fault to the Raspberry Pi. TODO(task 21,
- * task 15): send REPORT_STATUS_SENSOR_FAULT over BLE or buffer it while
- * disconnected. Until then only a log line without health data is written.
- * Design Document, Chapter 6, Section 6.1, Requirement 2.6.
+ * Report the start of a sensor fault to the Raspberry Pi: queue a FAULT
+ * report (REPORT_STATUS_SENSOR_FAULT, active) in the report buffer, which
+ * sends it now or after the reconnect, and log it without health data.
+ * Design Document, Chapter 6, Section 6.1, Requirements 2.6 and 3.2.
  */
 static void weight_task_report_sensor_fault(void)
 {
     ESP_LOGW(WEIGHT_TASK_LOG_TAG, "Sensor fault: evaluation suspended, rechecking every 10 s");
+    if (!report_buffer_service_push_fault(REPORT_STATUS_SENSOR_FAULT, REPORT_FAULT_ACTIVE))
+    {
+        ESP_LOGE(WEIGHT_TASK_LOG_TAG, "Sensor fault report could not be queued");
+    }
 }
 
 /*
- * Log that valid values have returned after a sensor fault and the
+ * Report that valid values have returned after a sensor fault: queue a
+ * FAULT report (REPORT_STATUS_SENSOR_FAULT, cleared) and log that the
  * evaluation resumes. No weight is logged (Requirement 4.4).
- * Design Document, Chapter 6, Section 6.1, Requirement 2.7.
+ * Design Document, Chapter 6, Section 6.1, Requirements 2.7 and 3.2.
  */
-static void weight_task_log_sensor_recovered(void)
+static void weight_task_report_sensor_recovered(void)
 {
     ESP_LOGI(WEIGHT_TASK_LOG_TAG, "Sensor recovered: evaluation resumed");
+    if (!report_buffer_service_push_fault(REPORT_STATUS_SENSOR_FAULT, REPORT_FAULT_CLEARED))
+    {
+        ESP_LOGE(WEIGHT_TASK_LOG_TAG, "Sensor recovery report could not be queued");
+    }
 }
 
 /*
@@ -158,7 +171,7 @@ static void weight_task_cycle(uint64_t now_ms)
     }
     if (output.sensor_recovered)
     {
-        weight_task_log_sensor_recovered();
+        weight_task_report_sensor_recovered();
     }
     weight_task_apply_led(output.led_request);
 

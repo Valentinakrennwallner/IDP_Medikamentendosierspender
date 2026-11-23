@@ -51,6 +51,8 @@ messages, which closes the connection.
 
 The same component also provides the result (type 4) and fault (type 6)
 encoders in `report_message.h` (format in `code/protocol/SECURE_CHANNEL.md`).
-They are not yet called by this component; sending results/faults, the
-report sequence counter, and the result buffer of autonomous mode (at most
-`REPORT_MESSAGE_MAX_PENDING` unsent reports) are still to be wired in.
+The report sequence counter and the result buffer of autonomous mode are in
+`components/report_buffer` (task 15). The transport still has to provide its
+send function (`report_buffer_send_fn`, wrapping
+`ble_secure_transport_send()`) and call `report_buffer_service_flush()` after
+every (re)connect and when new reports wait while connected (tasks 18, 19).

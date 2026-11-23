@@ -54,6 +54,20 @@ It is built and run by the host CMake project in `../raspberry-pi`
 (`wall_clock_tests`). The esp_timer binding (`wall_clock_esp32.c`) is tested
 on the hardware.
 
+`report_buffer_test.c` checks the report ring buffer
+(`components/report_buffer`) with a fake transport that records every report
+and can be made to fail; recorded RESULT/FAULT reports are decoded again with
+the shared protocol decoder: reports queued without a connection are sent in
+order after the reconnect, each exactly once (a second flush sends nothing),
+DAY_END is empty and uses no sequence number, a failed send keeps the
+sequence number, the numbers 0, 1 ... 255 and the wrap to 1, the overflow
+(oldest dropped, the remaining reports numbered consecutively from 0), commit
+with a stale id after an overflow, invalid reports (rejected, no number used)
+and missing arguments (Requirements 1.6, 1.7, 2.6, 2.13, 3.2). It is built
+and run by the host CMake project in `../raspberry-pi`
+(`report_buffer_tests`). The spinlock binding (`report_buffer_esp32.c`) is
+tested on the hardware.
+
 `persistence_test.c` checks the calibration storage (`components/persistence`)
 against an in-memory NVS (`mocks/nvs.h`, `mocks/nvs_flash.h`,
 `mocks/esp_err.h`) in which every call can be made to fail: save and load of

@@ -46,7 +46,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 14 | Dose evaluation | ESP32 | partial |
 | 15 | Result reporting and buffering | ESP32 | done (Valentina) |
 | 16 | Day end and deep sleep | ESP32 | open |
-| 17 | PSK commissioning | ESP32 | open |
+| 17 | PSK commissioning | ESP32 | done (Valentina) |
 | 18 | Start-up connection | ESP32 | partial |
 | 19 | Heartbeat and reconnect task | ESP32 | partial |
 | 20 | ESP32 clock | ESP32 | done (Valentina) |
@@ -63,7 +63,7 @@ To work on a task: give the AI the preamble plus the task prompt, review the res
 | 31 | Hardware test plan | verification | open |
 | 32 | Crypto review package | verification | open |
 
-Summary: 10 done, 11 partial, 1 in progress, 10 open.
+Summary: 11 done, 11 partial, 1 in progress, 9 open.
 
 Suggested order: finish the dosing logic (1, 12–14), then the ESP32 sensor
 path (8–11), then wire both applications (20, 21 and 22–27), then verification.
@@ -231,12 +231,16 @@ Day end and deep sleep. "Add the end-of-day sequence (1.6, 1.7): last-row check,
 - Note: the results `DOSING_RESULT_DAY_ENDED_OK` and `DOSING_RESULT_DAY_ENDED_MISSED` exist.
 - Follow-up from task 15: the report buffer is RAM only and is lost in deep sleep. If there is no connection at the end of the day, the buffered reports (including the missed dose and DAY_END) must be sent before deep sleep, e.g. by waiting for the reconnect.
 
-### 17. PSK commissioning — open
+### 17. PSK commissioning — done (Valentina)
 Prompt (original, unchanged):
 
 ```text
 ESP32 connectivity and application - PSK commissioning. Add serial-based commissioning of the 32-byte PSK into NVS (4.7). Reject an all-zero key, never log it, and add a loader for ble_secure_transport_start()."
 ```
+
+- Implemented: `persistence_psk_save()` / `persistence_psk_load()` (loader for `ble_secure_transport_start()`, output zeroed unless `PERSISTENCE_OK`) and `persistence_psk_is_acceptable()` (rejects all-equal bytes and +-1 sequences) in `components/persistence`; serial dialog `psk_commission()` in `components/psk_commissioning` (64 hex characters as in `psk_hex`, entered twice, masked echo, `REPLACE` for an existing key, verify by reload, `mbedtls_platform_zeroize()` for every copy); line input and console UART taken out of the calibration into `components/serial_line`. Tests in `persistence_test.c` and `psk_commissioning_test.c`; `calibration_tests` unchanged.
+- Hardware test passed (2026-11-23): key entered twice (only `*` visible), saved and verified, `persistence_psk_load()` returned `PERSISTENCE_OK`; after a restart the `REPLACE` prompt appeared, different entries were detected, cancelling with `q` saved nothing and the old key stayed loadable. Calibration dialog after the `serial_line` refactoring: factor 17643 counts per gram, control measurement 8.495 g; cancelling with `q` saved nothing.
+- Follow-up: load the key at start-up, start BLE only on `PERSISTENCE_OK` and run `psk_commission()` otherwise (tasks 18, 21).
 
 ### 18. Start-up connection — partial
 Prompt (original, unchanged):

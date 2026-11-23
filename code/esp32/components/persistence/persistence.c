@@ -13,6 +13,15 @@
  * The factor is stored as a fixed-point integer so that no float object is
  * reinterpreted as an integer. The CRC-32 detects corrupted or foreign data;
  * it is no protection against deliberate manipulation.
+ *
+ * Pre-shared key blob, version 1 (40 bytes, big-endian), namespace
+ * "security", key "psk" (Design Document, Chapter 6, Section 6.2,
+ * Requirement 4.7):
+ *   offset  0  uint32  layout version (PERSISTENCE_PSK_VERSION)
+ *   offset  4  32 B    pre-shared key
+ *   offset 36  uint32  CRC-32 (IEEE 802.3) over bytes 0 to 35
+ * Every local copy of the key is overwritten with mbedtls_platform_zeroize(),
+ * which the compiler must not remove as a dead store (unlike memset()).
  */
 #include "persistence.h"
 
@@ -21,6 +30,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "mbedtls/platform_util.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -28,6 +38,10 @@
 #define BLOB_TARE_OFFSET 4U
 #define BLOB_FACTOR_OFFSET 8U
 #define BLOB_CRC_OFFSET 12U
+
+#define PSK_BLOB_VERSION_OFFSET 0U
+#define PSK_BLOB_KEY_OFFSET 4U
+#define PSK_BLOB_CRC_OFFSET 36U
 
 #define COUNTS_PER_GRAM_SCALE 1000.0
 #define CRC32_INITIAL 0xFFFFFFFFU
@@ -250,27 +264,22 @@ persistence_result_t persistence_erase_and_init(void)
 }
 
 /*
- * Read the calibration blob with nvs_get_blob() and validate it. Missing
- * data (namespace or key not found) is reported as PERSISTENCE_MISSING, all
- * other problems with their own result; *calibration stays unchanged.
- * Design Document, Chapter 2, Sections 2.1 and 2.2, Chapter 3, and
- * Chapter 6, Section 6.1, Requirement 2.8.
+ * Read a blob of exactly expected_length bytes with nvs_open() and
+ * nvs_get_blob(). Missing namespace or key: PERSISTENCE_MISSING; wrong
+ * length: PERSISTENCE_INVALID_SIZE; any other NVS error:
+ * PERSISTENCE_STORAGE_ERROR. Shared by the calibration and the pre-shared
+ * key. Design Document, Chapter 2, Section 2.2, and Chapter 6, Section 6.1,
+ * Requirement 2.8, and Section 6.2, Requirement 4.7.
  */
-persistence_result_t persistence_calibration_load(weight_calibration_t *calibration)
+static persistence_result_t read_blob(const char *name_space, const char *key, uint8_t *blob,
+                                      size_t expected_length)
 {
-    uint8_t blob[PERSISTENCE_CALIBRATION_BLOB_SIZE] = {0};
-    size_t length = PERSISTENCE_CALIBRATION_BLOB_SIZE;
+    size_t length = expected_length;
     nvs_handle_t handle = 0U;
-    weight_calibration_t loaded = {0, 0.0F};
     esp_err_t error;
     persistence_result_t result;
 
-    if (calibration == NULL)
-    {
-        return PERSISTENCE_INVALID_ARGUMENT;
-    }
-
-    error = nvs_open(PERSISTENCE_NAMESPACE, NVS_READONLY, &handle);
+    error = nvs_open(name_space, NVS_READONLY, &handle);
     if (error == ESP_ERR_NVS_NOT_FOUND)
     {
         return PERSISTENCE_MISSING;
@@ -280,7 +289,7 @@ persistence_result_t persistence_calibration_load(weight_calibration_t *calibrat
         return PERSISTENCE_STORAGE_ERROR;
     }
 
-    error = nvs_get_blob(handle, PERSISTENCE_CALIBRATION_KEY, blob, &length);
+    error = nvs_get_blob(handle, key, blob, &length);
     nvs_close(handle);
 
     if (error == ESP_ERR_NVS_NOT_FOUND)
@@ -295,11 +304,62 @@ persistence_result_t persistence_calibration_load(weight_calibration_t *calibrat
     {
         result = PERSISTENCE_STORAGE_ERROR;
     }
-    else if (length != PERSISTENCE_CALIBRATION_BLOB_SIZE)
+    else if (length != expected_length)
     {
         result = PERSISTENCE_INVALID_SIZE;
     }
     else
+    {
+        result = PERSISTENCE_OK;
+    }
+    return result;
+}
+
+/*
+ * Store a blob with nvs_open(), nvs_set_blob() and nvs_commit(). Any NVS
+ * error gives PERSISTENCE_STORAGE_ERROR. Shared by the calibration and the
+ * pre-shared key. Design Document, Chapter 2, Section 2.2, and Chapter 6,
+ * Section 6.1, Requirement 2.8, and Section 6.2, Requirement 4.7.
+ */
+static persistence_result_t write_blob(const char *name_space, const char *key,
+                                       const uint8_t *blob, size_t length)
+{
+    nvs_handle_t handle = 0U;
+    persistence_result_t result = PERSISTENCE_OK;
+
+    if (nvs_open(name_space, NVS_READWRITE, &handle) != ESP_OK)
+    {
+        return PERSISTENCE_STORAGE_ERROR;
+    }
+    if ((nvs_set_blob(handle, key, blob, length) != ESP_OK) || (nvs_commit(handle) != ESP_OK))
+    {
+        result = PERSISTENCE_STORAGE_ERROR;
+    }
+    nvs_close(handle);
+    return result;
+}
+
+/*
+ * Read the calibration blob with nvs_get_blob() and validate it. Missing
+ * data (namespace or key not found) is reported as PERSISTENCE_MISSING, all
+ * other problems with their own result; *calibration stays unchanged.
+ * Design Document, Chapter 2, Sections 2.1 and 2.2, Chapter 3, and
+ * Chapter 6, Section 6.1, Requirement 2.8.
+ */
+persistence_result_t persistence_calibration_load(weight_calibration_t *calibration)
+{
+    uint8_t blob[PERSISTENCE_CALIBRATION_BLOB_SIZE] = {0};
+    weight_calibration_t loaded = {0, 0.0F};
+    persistence_result_t result;
+
+    if (calibration == NULL)
+    {
+        return PERSISTENCE_INVALID_ARGUMENT;
+    }
+
+    result = read_blob(PERSISTENCE_NAMESPACE, PERSISTENCE_CALIBRATION_KEY, blob,
+                       PERSISTENCE_CALIBRATION_BLOB_SIZE);
+    if (result == PERSISTENCE_OK)
     {
         result = decode_calibration(blob, &loaded);
     }
@@ -320,7 +380,6 @@ persistence_result_t persistence_calibration_load(weight_calibration_t *calibrat
 persistence_result_t persistence_calibration_save(const weight_calibration_t *calibration)
 {
     uint8_t blob[PERSISTENCE_CALIBRATION_BLOB_SIZE] = {0};
-    nvs_handle_t handle = 0U;
     persistence_result_t result;
 
     if (calibration == NULL)
@@ -329,21 +388,122 @@ persistence_result_t persistence_calibration_save(const weight_calibration_t *ca
     }
 
     result = encode_calibration(calibration, blob);
-    if (result != PERSISTENCE_OK)
+    if (result == PERSISTENCE_OK)
     {
-        return result;
+        result = write_blob(PERSISTENCE_NAMESPACE, PERSISTENCE_CALIBRATION_KEY, blob,
+                            PERSISTENCE_CALIBRATION_BLOB_SIZE);
+    }
+    return result;
+}
+
+/*
+ * Reject keys that are obviously not random: all 32 bytes equal (including
+ * all zero and all 0xFF) or a sequence that rises or falls by exactly 1 per
+ * byte (modulo 256), e.g. 00 01 02 ... 1F. Used when entering, saving and
+ * loading the key, so no such key reaches the BLE transport.
+ * Design Document, Chapter 5, Section 5.1 (Threat 6), and Chapter 6,
+ * Section 6.2, Requirements 4.7 and 4.9.
+ */
+bool persistence_psk_is_acceptable(const uint8_t psk[PERSISTENCE_PSK_SIZE])
+{
+    uint8_t step;
+    size_t index;
+    bool constant_step = true;
+
+    if (psk == NULL)
+    {
+        return false;
     }
 
-    if (nvs_open(PERSISTENCE_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK)
+    step = (uint8_t)(psk[1] - psk[0]);
+    for (index = 2U; (index < PERSISTENCE_PSK_SIZE) && constant_step; ++index)
     {
-        return PERSISTENCE_STORAGE_ERROR;
+        constant_step = ((uint8_t)(psk[index] - psk[index - 1U]) == step);
     }
-    if ((nvs_set_blob(handle, PERSISTENCE_CALIBRATION_KEY, blob,
-                      PERSISTENCE_CALIBRATION_BLOB_SIZE) != ESP_OK) ||
-        (nvs_commit(handle) != ESP_OK))
+    return !(constant_step && ((step == 0U) || (step == 1U) || (step == 0xFFU)));
+}
+
+/*
+ * Read the pre-shared key from NVS and validate layout version, CRC-32 and
+ * the key itself (persistence_psk_is_acceptable()). On success the key is
+ * written to psk; on every other result psk is overwritten with zeros, so
+ * the caller can never use a stale or invalid key (fail closed: BLE stays
+ * disabled). This is the loader for ble_secure_transport_start() (task 18).
+ * Design Document, Chapter 2, Section 2.2, and Chapter 6, Section 6.2,
+ * Requirements 4.7 and 4.9.
+ */
+persistence_result_t persistence_psk_load(uint8_t psk[PERSISTENCE_PSK_SIZE])
+{
+    uint8_t blob[PERSISTENCE_PSK_BLOB_SIZE] = {0};
+    persistence_result_t result;
+    size_t index;
+
+    if (psk == NULL)
     {
-        result = PERSISTENCE_STORAGE_ERROR;
+        return PERSISTENCE_INVALID_ARGUMENT;
     }
-    nvs_close(handle);
+
+    result = read_blob(PERSISTENCE_SECURITY_NAMESPACE, PERSISTENCE_PSK_KEY, blob,
+                       PERSISTENCE_PSK_BLOB_SIZE);
+    if (result == PERSISTENCE_OK)
+    {
+        if (crc32_compute(blob, PSK_BLOB_CRC_OFFSET) != read_u32_be(&blob[PSK_BLOB_CRC_OFFSET]))
+        {
+            result = PERSISTENCE_INVALID_CHECKSUM;
+        }
+        else if (read_u32_be(&blob[PSK_BLOB_VERSION_OFFSET]) != PERSISTENCE_PSK_VERSION)
+        {
+            result = PERSISTENCE_INVALID_VERSION;
+        }
+        else if (!persistence_psk_is_acceptable(&blob[PSK_BLOB_KEY_OFFSET]))
+        {
+            result = PERSISTENCE_INVALID_VALUE;
+        }
+        else
+        {
+            /* Result stays PERSISTENCE_OK. */
+        }
+    }
+
+    for (index = 0U; index < PERSISTENCE_PSK_SIZE; ++index)
+    {
+        psk[index] = (result == PERSISTENCE_OK) ? blob[PSK_BLOB_KEY_OFFSET + index] : 0U;
+    }
+    mbedtls_platform_zeroize(blob, sizeof(blob));
+    return result;
+}
+
+/*
+ * Validate the pre-shared key, serialise it with version and CRC-32 and
+ * store it with nvs_set_blob() and nvs_commit(). An unacceptable key is
+ * rejected with PERSISTENCE_INVALID_VALUE and nothing is written.
+ * Design Document, Chapter 2, Section 2.2, and Chapter 6, Section 6.2,
+ * Requirement 4.7.
+ */
+persistence_result_t persistence_psk_save(const uint8_t psk[PERSISTENCE_PSK_SIZE])
+{
+    uint8_t blob[PERSISTENCE_PSK_BLOB_SIZE] = {0};
+    persistence_result_t result;
+    size_t index;
+
+    if (psk == NULL)
+    {
+        return PERSISTENCE_INVALID_ARGUMENT;
+    }
+    if (!persistence_psk_is_acceptable(psk))
+    {
+        return PERSISTENCE_INVALID_VALUE;
+    }
+
+    write_u32_be(&blob[PSK_BLOB_VERSION_OFFSET], PERSISTENCE_PSK_VERSION);
+    for (index = 0U; index < PERSISTENCE_PSK_SIZE; ++index)
+    {
+        blob[PSK_BLOB_KEY_OFFSET + index] = psk[index];
+    }
+    write_u32_be(&blob[PSK_BLOB_CRC_OFFSET], crc32_compute(blob, PSK_BLOB_CRC_OFFSET));
+
+    result = write_blob(PERSISTENCE_SECURITY_NAMESPACE, PERSISTENCE_PSK_KEY, blob,
+                        PERSISTENCE_PSK_BLOB_SIZE);
+    mbedtls_platform_zeroize(blob, sizeof(blob));
     return result;
 }

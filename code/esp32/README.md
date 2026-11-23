@@ -77,7 +77,11 @@ the RESULT reports) and the BLE thread that sends the buffered reports
 - `weight_monitor`: per-cycle logic of the weight-measurement thread.
 - `sensor_fault`: sensor-fault state machine (Requirements 2.6, 2.7).
 - `calibration`: serial commissioning calibration (Requirement 2.8).
-- `persistence`: calibration data in NVS.
+- `persistence`: calibration data and pre-shared key in NVS.
+- `psk_commissioning`: serial commissioning of the pre-shared key
+  (Requirement 4.7).
+- `serial_line`: line input and console UART for the serial commissioning
+  dialogs.
 - `dosing`: schedule table and dose-state evaluation.
 - `report_buffer`: ring buffer of RESULT, FAULT and DAY_END reports
   (exactly once, in order, buffered while disconnected).

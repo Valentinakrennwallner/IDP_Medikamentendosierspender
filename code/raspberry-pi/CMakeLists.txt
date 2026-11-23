@@ -184,9 +184,11 @@ if(BUILD_TESTING)
     add_executable(persistence_test
         ../esp32/test/persistence_test.c
         ../esp32/components/persistence/persistence.c
+        ../esp32/test/mocks_mbedtls/platform_util_host.c
     )
     target_include_directories(persistence_test PRIVATE
         ../esp32/test/mocks
+        ../esp32/test/mocks_mbedtls
         ../esp32/components/weight
         ../esp32/components/persistence
     )
@@ -201,12 +203,14 @@ if(BUILD_TESTING)
     add_executable(calibration_test
         ../esp32/test/calibration_test.c
         ../esp32/components/calibration/calibration.c
+        ../esp32/components/serial_line/serial_line.c
     )
     target_include_directories(calibration_test PRIVATE
         ../esp32/test/mocks
         ../esp32/components/weight
         ../esp32/components/persistence
         ../esp32/components/calibration
+        ../esp32/components/serial_line
     )
     target_compile_options(calibration_test PRIVATE
         -Wall
@@ -215,6 +219,29 @@ if(BUILD_TESTING)
     )
     target_link_libraries(calibration_test PRIVATE m)
     add_test(NAME calibration_tests COMMAND calibration_test)
+
+    add_executable(psk_commissioning_test
+        ../esp32/test/psk_commissioning_test.c
+        ../esp32/components/psk_commissioning/psk_commissioning.c
+        ../esp32/components/persistence/persistence.c
+        ../esp32/components/serial_line/serial_line.c
+        ../esp32/test/mocks_mbedtls/platform_util_host.c
+    )
+    target_include_directories(psk_commissioning_test PRIVATE
+        ../esp32/test/mocks
+        ../esp32/test/mocks_mbedtls
+        ../esp32/components/weight
+        ../esp32/components/persistence
+        ../esp32/components/serial_line
+        ../esp32/components/psk_commissioning
+    )
+    target_compile_options(psk_commissioning_test PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_link_libraries(psk_commissioning_test PRIVATE m)
+    add_test(NAME psk_commissioning_tests COMMAND psk_commissioning_test)
 
     add_executable(schedule_test
         test/schedule_test.c

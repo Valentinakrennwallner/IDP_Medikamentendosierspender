@@ -3,14 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mbedtls/platform_util.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "persistence.h"
 
 /*
- * Host tests for the calibration persistence. The NVS API is replaced by an
- * in-memory store holding one blob; every NVS call can be made to fail.
- * Design Document, Chapter 6, Section 6.1, Requirement 2.8.
+ * Host tests for the calibration and pre-shared key persistence. The NVS
+ * API is replaced by an in-memory store with one blob for the calibration
+ * and one for the pre-shared key; every NVS call can be made to fail.
+ * Design Document, Chapter 6, Section 6.1, Requirement 2.8, and Section 6.2,
+ * Requirement 4.7.
  */
 
 #define STORE_CAPACITY 32U
@@ -24,6 +27,15 @@ static unsigned int set_blob_calls;
 static unsigned int open_handles;
 static unsigned int erase_calls;
 static unsigned int init_calls;
+
+/* Second in-memory blob: namespace "security", key "psk". */
+#define PSK_STORE_CAPACITY 64U
+#define HANDLE_CALIBRATION 1U
+#define HANDLE_SECURITY 2U
+static unsigned char psk_stored_blob[PSK_STORE_CAPACITY];
+static size_t psk_stored_length;
+static int psk_namespace_exists;
+static int psk_blob_exists;
 
 /* Injected errors per NVS call (ESP_OK = no error). */
 static esp_err_t flash_init_error;
@@ -60,6 +72,12 @@ static void reset_store(void)
     open_handles = 0U;
     erase_calls = 0U;
     init_calls = 0U;
+    (void)memset(psk_stored_blob, 0, sizeof(psk_stored_blob));
+    psk_stored_length = 0U;
+    psk_namespace_exists = 0;
+    psk_blob_exists = 0;
+    mock_zeroize_calls = 0U;
+    mock_zeroize_bytes = 0U;
     flash_init_error = ESP_OK;
     flash_erase_error = ESP_OK;
     open_error = ESP_OK;
@@ -85,6 +103,9 @@ esp_err_t nvs_flash_erase(void)
     namespace_exists = 0;
     blob_exists = 0;
     stored_length = 0U;
+    psk_namespace_exists = 0;
+    psk_blob_exists = 0;
+    psk_stored_length = 0U;
     return ESP_OK;
 }
 
@@ -96,6 +117,17 @@ esp_err_t nvs_open(const char *namespace_name, nvs_open_mode_t open_mode,
     {
         return open_error;
     }
+    if (strcmp(namespace_name, PERSISTENCE_SECURITY_NAMESPACE) == 0)
+    {
+        if ((open_mode == NVS_READONLY) && (psk_namespace_exists == 0))
+        {
+            return ESP_ERR_NVS_NOT_FOUND;
+        }
+        psk_namespace_exists = 1;
+        open_handles++;
+        *out_handle = HANDLE_SECURITY;
+        return ESP_OK;
+    }
     if (strcmp(namespace_name, PERSISTENCE_NAMESPACE) != 0)
     {
         return ESP_FAIL;
@@ -106,7 +138,7 @@ esp_err_t nvs_open(const char *namespace_name, nvs_open_mode_t open_mode,
     }
     namespace_exists = 1;
     open_handles++;
-    *out_handle = 1U;
+    *out_handle = HANDLE_CALIBRATION;
     return ESP_OK;
 }
 
@@ -114,10 +146,23 @@ esp_err_t nvs_open(const char *namespace_name, nvs_open_mode_t open_mode,
 esp_err_t nvs_get_blob(nvs_handle_t handle, const char *key, void *out_value,
                        size_t *length)
 {
-    (void)handle;
     if (get_error != ESP_OK)
     {
         return get_error;
+    }
+    if (handle == HANDLE_SECURITY)
+    {
+        if ((strcmp(key, PERSISTENCE_PSK_KEY) != 0) || (psk_blob_exists == 0))
+        {
+            return ESP_ERR_NVS_NOT_FOUND;
+        }
+        if (*length < psk_stored_length)
+        {
+            return ESP_ERR_NVS_INVALID_LENGTH;
+        }
+        (void)memcpy(out_value, psk_stored_blob, psk_stored_length);
+        *length = psk_stored_length;
+        return ESP_OK;
     }
     if ((strcmp(key, PERSISTENCE_CALIBRATION_KEY) != 0) || (blob_exists == 0))
     {
@@ -135,11 +180,21 @@ esp_err_t nvs_get_blob(nvs_handle_t handle, const char *key, void *out_value,
 esp_err_t nvs_set_blob(nvs_handle_t handle, const char *key, const void *value,
                        size_t length)
 {
-    (void)handle;
     set_blob_calls++;
     if (set_error != ESP_OK)
     {
         return set_error;
+    }
+    if (handle == HANDLE_SECURITY)
+    {
+        if ((strcmp(key, PERSISTENCE_PSK_KEY) != 0) || (length > PSK_STORE_CAPACITY))
+        {
+            return ESP_FAIL;
+        }
+        (void)memcpy(psk_stored_blob, value, length);
+        psk_stored_length = length;
+        psk_blob_exists = 1;
+        return ESP_OK;
     }
     if ((strcmp(key, PERSISTENCE_CALIBRATION_KEY) != 0) || (length > STORE_CAPACITY))
     {
@@ -421,7 +476,209 @@ static int test_invalid_arguments(void)
     return 0;
 }
 
-/* Run the calibration persistence tests without ESP-IDF or hardware. */
+/* A random-looking test key (never a real key). */
+static const uint8_t test_psk[PERSISTENCE_PSK_SIZE] = {
+    0x3c, 0x9a, 0x51, 0x07, 0xe2, 0x6d, 0xb8, 0x14, 0x4f, 0xa3, 0x0e, 0x72, 0xc5, 0x29, 0x96, 0xdb,
+    0x60, 0x1b, 0xf4, 0x87, 0x3e, 0xd2, 0x58, 0xab, 0x05, 0x91, 0x6e, 0xc7, 0x2a, 0xbd, 0x43, 0xf8,
+};
+
+/* Store a hand-built 40-byte pre-shared key blob with a correct CRC. */
+static void store_psk_blob(uint32_t version, const uint8_t *key)
+{
+    put_u32_be(&psk_stored_blob[0], version);
+    (void)memcpy(&psk_stored_blob[4], key, PERSISTENCE_PSK_SIZE);
+    put_u32_be(&psk_stored_blob[36], reference_crc32(psk_stored_blob, 36U));
+    psk_stored_length = PERSISTENCE_PSK_BLOB_SIZE;
+    psk_namespace_exists = 1;
+    psk_blob_exists = 1;
+}
+
+/* True if all bytes of the key buffer are zero. */
+static int all_zero(const uint8_t *key)
+{
+    size_t index;
+
+    for (index = 0U; index < PERSISTENCE_PSK_SIZE; index++)
+    {
+        if (key[index] != 0U)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+ * Requirement 4.7: save and load the key; exact blob layout (version 1, key,
+ * CRC-32) in its own namespace; the calibration is not touched; the local
+ * blob copies are overwritten with mbedtls_platform_zeroize().
+ */
+static int test_psk_round_trip_and_layout(void)
+{
+    uint8_t loaded[PERSISTENCE_PSK_SIZE];
+
+    reset_store();
+    CHECK(PERSISTENCE_PSK_SIZE == 32U);
+    CHECK(persistence_psk_save(test_psk) == PERSISTENCE_OK);
+    CHECK(mock_zeroize_calls == 1U);
+    CHECK(mock_zeroize_bytes == PERSISTENCE_PSK_BLOB_SIZE);
+    CHECK(psk_stored_length == PERSISTENCE_PSK_BLOB_SIZE);
+    CHECK((psk_stored_blob[0] == 0U) && (psk_stored_blob[3] == 1U));
+    CHECK(memcmp(&psk_stored_blob[4], test_psk, PERSISTENCE_PSK_SIZE) == 0);
+    {
+        unsigned char crc[4];
+
+        put_u32_be(crc, reference_crc32(psk_stored_blob, 36U));
+        CHECK(memcmp(&psk_stored_blob[36], crc, 4U) == 0);
+    }
+    CHECK((namespace_exists == 0) && (blob_exists == 0));
+
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_OK);
+    CHECK(memcmp(loaded, test_psk, sizeof(loaded)) == 0);
+    CHECK(mock_zeroize_calls == 2U);
+    CHECK(open_handles == 0U);
+    return 0;
+}
+
+/* Missing or damaged data: load fails and the output is overwritten with zeros. */
+static int test_psk_load_failures_clear_output(void)
+{
+    uint8_t loaded[PERSISTENCE_PSK_SIZE];
+
+    reset_store();
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_MISSING);
+    CHECK(all_zero(loaded));
+
+    /* Namespace exists (e.g. after an erase-free reflash), key missing. */
+    psk_namespace_exists = 1;
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_MISSING);
+    CHECK(all_zero(loaded));
+
+    store_psk_blob(PERSISTENCE_PSK_VERSION, test_psk);
+    psk_stored_blob[10] ^= 0x01U;
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_INVALID_CHECKSUM);
+    CHECK(all_zero(loaded));
+
+    store_psk_blob(2U, test_psk);
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_INVALID_VERSION);
+    CHECK(all_zero(loaded));
+
+    store_psk_blob(PERSISTENCE_PSK_VERSION, test_psk);
+    psk_stored_length = PERSISTENCE_PSK_BLOB_SIZE - 1U;
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_INVALID_SIZE);
+    CHECK(all_zero(loaded));
+    psk_stored_length = PERSISTENCE_PSK_BLOB_SIZE + 1U;
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_INVALID_SIZE);
+    CHECK(all_zero(loaded));
+    return 0;
+}
+
+/*
+ * Obviously non-random keys are rejected when saving (nothing written) and
+ * when loading (stored with a correct CRC, e.g. by an older firmware).
+ */
+static int test_psk_rejects_weak_keys(void)
+{
+    uint8_t weak[PERSISTENCE_PSK_SIZE];
+    uint8_t loaded[PERSISTENCE_PSK_SIZE];
+    size_t index;
+    int variant;
+
+    for (variant = 0; variant < 6; variant++)
+    {
+        for (index = 0U; index < PERSISTENCE_PSK_SIZE; index++)
+        {
+            switch (variant)
+            {
+                case 0: weak[index] = 0x00U; break;                          /* all zero */
+                case 1: weak[index] = 0xFFU; break;                          /* all 0xFF */
+                case 2: weak[index] = 0x5AU; break;                          /* constant */
+                case 3: weak[index] = (uint8_t)index; break;                 /* 00 01 ... 1F */
+                case 4: weak[index] = (uint8_t)(0x1FU - index); break;       /* 1F 1E ... 00 */
+                default: weak[index] = (uint8_t)(0xF0U + index); break;      /* F0 ... FF 00 ... 0F */
+            }
+        }
+        reset_store();
+        CHECK(!persistence_psk_is_acceptable(weak));
+        CHECK(persistence_psk_save(weak) == PERSISTENCE_INVALID_VALUE);
+        CHECK((set_blob_calls == 0U) && (psk_blob_exists == 0));
+
+        store_psk_blob(PERSISTENCE_PSK_VERSION, weak);
+        (void)memset(loaded, 0xAA, sizeof(loaded));
+        CHECK(persistence_psk_load(loaded) == PERSISTENCE_INVALID_VALUE);
+        CHECK(all_zero(loaded));
+    }
+
+    /* Almost a sequence, or a step of 2: accepted (only obvious keys are rejected). */
+    for (index = 0U; index < PERSISTENCE_PSK_SIZE; index++)
+    {
+        weak[index] = (uint8_t)index;
+    }
+    weak[31] = 0x00U;
+    CHECK(persistence_psk_is_acceptable(weak));
+    for (index = 0U; index < PERSISTENCE_PSK_SIZE; index++)
+    {
+        weak[index] = (uint8_t)(2U * index);
+    }
+    CHECK(persistence_psk_is_acceptable(weak));
+    CHECK(persistence_psk_is_acceptable(test_psk));
+    CHECK(!persistence_psk_is_acceptable(NULL));
+    return 0;
+}
+
+/* NVS errors on open, read, write and commit; erase removes the key too. */
+static int test_psk_storage_errors_and_erase(void)
+{
+    uint8_t loaded[PERSISTENCE_PSK_SIZE];
+
+    reset_store();
+    open_error = ESP_FAIL;
+    CHECK(persistence_psk_save(test_psk) == PERSISTENCE_STORAGE_ERROR);
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_STORAGE_ERROR);
+    CHECK(all_zero(loaded));
+
+    reset_store();
+    set_error = ESP_FAIL;
+    CHECK(persistence_psk_save(test_psk) == PERSISTENCE_STORAGE_ERROR);
+    CHECK(mock_zeroize_calls == 1U);
+    CHECK(open_handles == 0U);
+
+    reset_store();
+    commit_error = ESP_FAIL;
+    CHECK(persistence_psk_save(test_psk) == PERSISTENCE_STORAGE_ERROR);
+    CHECK(open_handles == 0U);
+
+    reset_store();
+    store_psk_blob(PERSISTENCE_PSK_VERSION, test_psk);
+    get_error = ESP_FAIL;
+    (void)memset(loaded, 0xAA, sizeof(loaded));
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_STORAGE_ERROR);
+    CHECK(all_zero(loaded));
+    CHECK(open_handles == 0U);
+
+    reset_store();
+    CHECK(persistence_psk_save(test_psk) == PERSISTENCE_OK);
+    CHECK(persistence_erase_and_init() == PERSISTENCE_OK);
+    CHECK(persistence_psk_load(loaded) == PERSISTENCE_MISSING);
+    return 0;
+}
+
+/* Missing arguments: nothing is read or written. */
+static int test_psk_invalid_arguments(void)
+{
+    reset_store();
+    CHECK(persistence_psk_load(NULL) == PERSISTENCE_INVALID_ARGUMENT);
+    CHECK(persistence_psk_save(NULL) == PERSISTENCE_INVALID_ARGUMENT);
+    CHECK((set_blob_calls == 0U) && (open_handles == 0U) && (psk_namespace_exists == 0));
+    return 0;
+}
+
+/* Run the calibration and pre-shared key persistence tests without ESP-IDF or hardware. */
 int main(void)
 {
     if ((test_reference_crc() != 0) || (test_init() != 0) ||
@@ -429,7 +686,11 @@ int main(void)
         (test_round_trip() != 0) || (test_blob_layout() != 0) ||
         (test_values_and_rounding() != 0) || (test_missing() != 0) ||
         (test_corrupt_data() != 0) || (test_save_rejects_invalid_values() != 0) ||
-        (test_storage_errors() != 0) || (test_invalid_arguments() != 0))
+        (test_storage_errors() != 0) || (test_invalid_arguments() != 0) ||
+        (test_psk_round_trip_and_layout() != 0) ||
+        (test_psk_load_failures_clear_output() != 0) ||
+        (test_psk_rejects_weak_keys() != 0) ||
+        (test_psk_storage_errors_and_erase() != 0) || (test_psk_invalid_arguments() != 0))
     {
         (void)fputs("persistence tests failed\n", stderr);
         return EXIT_FAILURE;

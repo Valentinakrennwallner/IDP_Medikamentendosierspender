@@ -33,9 +33,13 @@ inside the authenticated message callback.
 
 The mbedTLS backend implements the shared P-256 ECDHE/PSK handshake,
 HKDF-SHA-256 derivation, and AES-256-GCM framing in
-`secure_channel_mbedtls.c`. Application startup currently has no commissioned
-key loader, so `app_main()` deliberately does not start advertising. Wire the
-start API only to a trusted provisioning source; do not embed a default key.
+`secure_channel_mbedtls.c`. The commissioned key is loaded with
+`persistence_psk_load()` (`components/persistence`, task 17); it is written
+only on `PERSISTENCE_OK` and zeroed otherwise. Start the transport only with
+a key from that loader (fail closed: without `PERSISTENCE_OK` BLE stays
+disabled); do not embed a default key. Without a valid key, the serial
+commissioning `psk_commission()` (`components/psk_commissioning`) stores
+one. `app_main()` does not start advertising yet (tasks 18, 21).
 Heartbeat scheduling remains transport-independent and is not wired to the
 transport until the application provides monotonic-clock and autonomous-mode
 callbacks.

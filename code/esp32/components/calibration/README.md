@@ -29,10 +29,13 @@ dependency. This is a split of the code, not a change of the design.
     (serial I/O, sensor and storage as function pointers).
 - `calibration_uart.c`: `weight_calibrate()` connects the dialog to the
   console UART 0 (ESP-IDF UART driver, 115200 baud from sdkconfig; no
-  `stdio`, MISRA C Rule 21.6), the HX711 (`weight_init()`,
-  `weight_measure_tare()`, `weight_measure_raw_mean()`, `weight_measure()`)
-  and NVS (`persistence_*`). The UART driver is installed if needed and stays
-  installed.
+  `stdio`, MISRA C Rule 21.6; binding in `components/serial_line`), the
+  HX711 (`weight_init()`, `weight_measure_tare()`,
+  `weight_measure_raw_mean()`, `weight_measure()`) and NVS (`persistence_*`).
+  The UART driver is installed if needed and stays installed.
+- The line input (echo, Backspace, CR/LF) and the UART functions are in
+  `components/serial_line` and are shared with the pre-shared key dialog
+  (task 17).
 
 ## Dialog
 

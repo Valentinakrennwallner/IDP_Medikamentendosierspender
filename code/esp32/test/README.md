@@ -77,9 +77,19 @@ checksum, version, value or length (output left unchanged), invalid values
 that must not be written, NVS errors on open, read, write and commit, NVS
 init errors that are not repaired by erasing, the explicit erase with
 `persistence_erase_and_init()` (and its errors), and missing arguments
-(Requirement 2.8). It is built and run by the host CMake project in
-`../raspberry-pi` (`persistence_tests`). The GPIO mock takes `esp_err_t` and
-`ESP_OK` from `mocks/esp_err.h`, as in ESP-IDF.
+(Requirement 2.8). For the pre-shared key (Requirement 4.7) it checks save
+and load with the exact 40-byte blob in its own namespace (the calibration
+is not touched), missing data, a wrong checksum, version or length with the
+output overwritten with zeros, rejected keys (all zero, all `0xFF`,
+constant, rising and falling sequences, also across `0xFF`/`0x00`) on save
+and on load, keys that are only almost a sequence (accepted), NVS errors,
+the erase, missing arguments, and that the local blob is zeroized. It is
+built and run by the host CMake project in `../raspberry-pi`
+(`persistence_tests`). The GPIO mock takes `esp_err_t` and `ESP_OK` from
+`mocks/esp_err.h`, as in ESP-IDF. `mocks_mbedtls/` provides
+`mbedtls_platform_zeroize()` with volatile writes and a call counter; it is
+a separate directory because the secure-channel interop test uses the real
+Mbed TLS headers together with `mocks/`.
 
 `calibration_test.c` checks the serial commissioning calibration
 (`components/calibration`, Requirement 2.8): parsing of the typed reference
@@ -94,8 +104,23 @@ and CR/LF handling, sensor faults with retry, no valid factor, NVS erase only
 after typing `ERASE`, save, reload and control measurement errors, serial I/O
 errors and an incomplete I/O description. `weight_calibrate()` (UART binding)
 is tested on the hardware. It is built and run by the host CMake project in
-`../raspberry-pi` (`calibration_tests`). `mocks/driver/uart.h` only lets the
-MISRA screening parse `calibration_uart.c` on the host.
+`../raspberry-pi` (`calibration_tests`) together with the shared line input
+(`components/serial_line`). `mocks/driver/uart.h` only lets the MISRA
+screening parse the UART bindings on the host.
+
+`psk_commissioning_test.c` checks the pre-shared key commissioning
+(`components/psk_commissioning`, Requirements 4.7 and 4.9): hex parsing
+(exactly 64 characters, both cases, wrong length, non-hex, spaces, `0x`
+prefix), and the dialog with a scripted terminal and a fake NVS: a complete
+run, two different entries (start again), invalid and too long input,
+all-zero and sequence keys (rejected, asked again), Backspace, `q` at both
+prompts, a stored key replaced only after `REPLACE`, NVS init and save
+errors, a key not read back unchanged, serial I/O errors and an incomplete
+I/O description. Every test checks that the output contains only `*` for
+the typed key and no 4 consecutive characters of its hex text.
+`psk_commission()` (UART binding) is tested on the hardware. It is built and
+run by the host CMake project in `../raspberry-pi`
+(`psk_commissioning_tests`).
 
 `mocks/esp_random.h` declares `esp_fill_random()` for the host build of the
 mbedTLS secure channel backend used by `secure_channel_interop_tests` in

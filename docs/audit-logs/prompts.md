@@ -48,3 +48,5 @@ The LLM prompts below were used with auto-selected Github Copilot standard model
 - Mark task 20 as done in tasklist; hardware test follows with task 18, table registered in task 21 (Claude Code, Claude Opus 5.5)
 - Add ESP32 report buffer (task 15): ring buffer of RESULT/FAULT/DAY_END reports, exactly once and in order after reconnect, oldest dropped on overflow, sequence number at the first send attempt, sensor fault (active/cleared) queued by the weight task, with host tests (Claude Code, Claude Opus 5.5)
 - Mark task 15 as done in tasklist; hardware test follows with tasks 18/19 (BLE) (Claude Code, Claude Opus 5.5)
+- Add ESP32 PSK commissioning (task 17): PSK save/load in persistence (versioned NVS blob, weak keys rejected, fail-closed loader), masked serial dialog entered twice, mbedtls_platform_zeroize for key copies, shared serial_line from the calibration dialog, with host tests (Claude Code, Claude Opus 5.5)
+- Mark task 17 as done in tasklist after the hardware test (Claude Code, Claude Opus 5.5)

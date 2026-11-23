@@ -19,6 +19,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "serial_line.h"
+
 #define MILLIGRAMS_PER_GRAM 1000U
 #define MILLI_SCALE 1000.0
 #define MAXIMUM_INTEGER_DIGITS 6U
@@ -29,13 +31,6 @@
 #define NUMBER_TEXT_SIZE 24U
 #define NUMBER_DIGITS_SIZE 20U
 #define MINIMUM_FORMATTED_DIGITS 4U
-
-#define ASCII_BACKSPACE 0x08U
-#define ASCII_DELETE 0x7FU
-#define ASCII_LINE_FEED 0x0AU
-#define ASCII_CARRIAGE_RETURN 0x0DU
-#define ASCII_FIRST_PRINTABLE 0x20U
-#define ASCII_LAST_PRINTABLE 0x7EU
 
 static const char digit_characters[] = "0123456789";
 
@@ -50,10 +45,8 @@ typedef struct
 {
     const calibration_io_t *io;
     char line[CALIBRATION_MAXIMUM_LINE_LENGTH + 1U];
-    uint32_t line_length;
-    bool line_too_long;
-    bool skip_line_feed;
-    bool io_failed;
+    /* Line input with echo (components/serial_line), writes into line. */
+    serial_line_t input;
 } dialog_t;
 
 /*
@@ -198,10 +191,7 @@ bool calibration_compute_counts_per_gram(int32_t tare_counts,
  */
 static void say(dialog_t *dialog, const char *text)
 {
-    if (!dialog->io_failed && !dialog->io->write_text(text))
-    {
-        dialog->io_failed = true;
-    }
+    serial_line_say(&dialog->input, text);
 }
 
 /*
@@ -271,90 +261,12 @@ static int64_t to_milli(float value)
 }
 
 /*
- * Echo one printable character back to the terminal.
- * Design Document, Chapter 6, Section 6.1, Requirement 2.8.
- */
-static void echo_character(dialog_t *dialog, char character)
-{
-    char text[2];
-
-    text[0] = character;
-    text[1] = '\0';
-    say(dialog, text);
-}
-
-/*
- * Read one line with echo and backspace. CR, LF and CR LF all end a line.
- * Lines longer than CALIBRATION_MAXIMUM_LINE_LENGTH are marked as too long
- * and later rejected. Returns false on an I/O error.
- * Design Document, Chapter 6, Section 6.1, Requirement 2.8.
- */
-static bool read_line(dialog_t *dialog)
-{
-    bool line_complete = false;
-    uint8_t byte = 0U;
-
-    dialog->line_length = 0U;
-    dialog->line_too_long = false;
-
-    while (!line_complete && !dialog->io_failed)
-    {
-        if (!dialog->io->read_byte(&byte))
-        {
-            dialog->io_failed = true;
-        }
-        else if ((byte == ASCII_LINE_FEED) && dialog->skip_line_feed)
-        {
-            dialog->skip_line_feed = false;
-        }
-        else
-        {
-            dialog->skip_line_feed = false;
-            if ((byte == ASCII_CARRIAGE_RETURN) || (byte == ASCII_LINE_FEED))
-            {
-                dialog->skip_line_feed = (byte == ASCII_CARRIAGE_RETURN);
-                say(dialog, "\r\n");
-                line_complete = true;
-            }
-            else if ((byte == ASCII_BACKSPACE) || (byte == ASCII_DELETE))
-            {
-                if (dialog->line_length > 0U)
-                {
-                    dialog->line_length--;
-                    say(dialog, "\b \b");
-                }
-            }
-            else if ((byte >= ASCII_FIRST_PRINTABLE) && (byte <= ASCII_LAST_PRINTABLE))
-            {
-                if (dialog->line_length < CALIBRATION_MAXIMUM_LINE_LENGTH)
-                {
-                    dialog->line[dialog->line_length] = (char)byte;
-                    dialog->line_length++;
-                    echo_character(dialog, (char)byte);
-                }
-                else
-                {
-                    dialog->line_too_long = true;
-                }
-            }
-            else
-            {
-                /* Other control characters are ignored. */
-            }
-        }
-    }
-
-    dialog->line[dialog->line_length] = '\0';
-    return line_complete;
-}
-
-/*
  * True if the complete line equals word.
  * Design Document, Chapter 6, Section 6.1, Requirement 2.8.
  */
 static bool line_is(const dialog_t *dialog, const char *word)
 {
-    return !dialog->line_too_long && (strcmp(dialog->line, word) == 0);
+    return serial_line_is(&dialog->input, word);
 }
 
 /*
@@ -365,7 +277,7 @@ static input_t read_input(dialog_t *dialog)
 {
     input_t input = INPUT_IO_ERROR;
 
-    if (!dialog->io_failed && read_line(dialog))
+    if (serial_line_read(&dialog->input))
     {
         input = (line_is(dialog, "q") || line_is(dialog, "Q")) ? INPUT_CANCEL : INPUT_LINE;
     }
@@ -474,7 +386,7 @@ static calibration_result_t ask_reference_weight(dialog_t *dialog, uint32_t *mil
             result = input_result(input);
             done = true;
         }
-        else if (!dialog->line_too_long && calibration_parse_grams(dialog->line, milligrams) &&
+        else if (!dialog->input.too_long && calibration_parse_grams(dialog->line, milligrams) &&
                  (*milligrams >= CALIBRATION_MINIMUM_REFERENCE_MILLIGRAMS) &&
                  (*milligrams <= CALIBRATION_MAXIMUM_REFERENCE_MILLIGRAMS))
         {
@@ -616,6 +528,8 @@ calibration_result_t calibration_dialog_run(const calibration_io_t *io)
 
     (void)memset(&dialog, 0, sizeof(dialog));
     dialog.io = io;
+    serial_line_init(&dialog.input, io->read_byte, io->write_text, dialog.line,
+                     CALIBRATION_MAXIMUM_LINE_LENGTH, SERIAL_LINE_ECHO_PLAIN);
 
     say(&dialog, "\r\n=== Weight calibration (commissioning) ===\r\n"
                  "Enter q at any prompt to cancel without saving.\r\n");

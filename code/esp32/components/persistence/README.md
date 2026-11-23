@@ -1,11 +1,12 @@
 # Persistence component
 
 Stores the commissioning calibration of the weight measurement (tare offset
-and counts per gram, `weight_calibration_t` from `components/weight`) in the
-non-volatile storage (NVS) of the ESP32 with `nvs_set_blob()` and
-`nvs_get_blob()`. This implements the storage part of Requirement 2.8
-(Design Document, Chapter 2, Sections 2.1 and 2.2, Chapter 3, and Chapter 6,
-Section 6.1, Requirement 2.8).
+and counts per gram, `weight_calibration_t` from `components/weight`) and
+the 256-bit pre-shared key in the non-volatile storage (NVS) of the ESP32
+with `nvs_set_blob()` and `nvs_get_blob()`. This implements the storage part
+of Requirements 2.8 and 4.7 (Design Document, Chapter 2, Sections 2.1 and
+2.2, Chapter 3, and Chapter 6, Section 6.1, Requirement 2.8, and
+Section 6.2, Requirement 4.7).
 
 ## API
 
@@ -13,10 +14,10 @@ Section 6.1, Requirement 2.8).
   The partition is **never erased** here. A full or outdated partition
   (`ESP_ERR_NVS_NO_FREE_PAGES`, `ESP_ERR_NVS_NEW_VERSION_FOUND`) returns
   `PERSISTENCE_STORAGE_ERROR`, so the device stays fail-closed and the
-  calibration and, later, the pre-shared key are never lost silently.
+  calibration and the pre-shared key are never lost silently.
 - `persistence_erase_and_init()` erases the whole NVS partition
   (`nvs_flash_erase()`) and initialises it again. This deletes the
-  calibration and every other NVS entry, later also the pre-shared key. It
+  calibration, the pre-shared key and every other NVS entry. It
   is only called by the commissioning calibration (`weight_calibrate()`,
   component `calibration`) after the user has explicitly typed `ERASE`.
 - `persistence_calibration_load()` reads and validates the calibration.
@@ -24,6 +25,13 @@ Section 6.1, Requirement 2.8).
 - `persistence_calibration_save()` validates the calibration, writes the blob
   and calls `nvs_commit()`. Invalid values are rejected with
   `PERSISTENCE_INVALID_VALUE` and nothing is written.
+- `persistence_psk_save()` / `persistence_psk_load()` store and load the
+  pre-shared key (see below). `persistence_psk_load()` is the loader for
+  `ble_secure_transport_start()` (task 18).
+- `persistence_psk_is_acceptable()` rejects obviously non-random keys.
+
+Both kinds of data use the same internal NVS helpers (`read_blob()`,
+`write_blob()`), so the error mapping is identical.
 
 ## Fail-closed (Requirement 2.8)
 
@@ -58,6 +66,37 @@ big-endian:
 - The CRC-32 detects corrupted or foreign data. It is no protection against
   deliberate manipulation.
 
+## Pre-shared key (Requirement 4.7)
+
+NVS namespace `security`, key `psk`, one blob of 40 bytes, big-endian:
+
+| Offset | Type | Content |
+|---|---|---|
+| 0 | `uint32` | layout version, currently 1 |
+| 4 | 32 bytes | pre-shared key |
+| 36 | `uint32` | CRC-32 (IEEE 802.3) over bytes 0 to 35 |
+
+- **Rejected keys** (when saving and when loading): all 32 bytes equal
+  (including all zero and all `0xFF`) and sequences that rise or fall by
+  exactly 1 per byte (modulo 256), e.g. `00 01 02 … 1F`. Only obviously
+  non-random keys are caught; the key must be generated randomly (see
+  `components/psk_commissioning`).
+- **Fail closed:** `persistence_psk_load()` writes the key only on
+  `PERSISTENCE_OK`. On every other result (missing, wrong length, version or
+  checksum, rejected key, NVS error) the output is overwritten with zeros,
+  so a caller can never use a stale or invalid key. Without
+  `PERSISTENCE_OK` BLE must stay disabled.
+- **Overwriting copies:** the local blob that holds the key is overwritten
+  with `mbedtls_platform_zeroize()` before returning. A plain `memset()` on a
+  buffer that is not read afterwards is a dead store that the compiler may
+  remove (C "as-if" rule); `mbedtls_platform_zeroize()` is guaranteed not to
+  be optimised away, and the BLE transport already uses it. The host tests
+  use a stand-in with volatile writes (`test/mocks_mbedtls`), so they do not
+  need an installed Mbed TLS.
+- The key is never logged. NVS is not encrypted: a person with physical
+  access can read the key (Design Document, Chapter 5, Section 5.2,
+  Threat 1, no countermeasure in this project).
+
 ## Not part of this component
 
 - Computing the factor and the serial dialog (`weight_calibrate()` in the
@@ -66,7 +105,9 @@ big-endian:
 - Calling `persistence_init()` and `persistence_calibration_load()` at
   start-up before any evaluation (`main/app_main.c`, task 21). Every result
   other than `PERSISTENCE_OK` counts as "no calibration".
-- Storing the pre-shared key (task 17); it can reuse `persistence_init()`.
+- The serial dialog for the pre-shared key (`psk_commission()` in the
+  component `psk_commissioning`, task 17) and loading the key before the BLE
+  start (tasks 18, 21).
 
 ## Tests
 
